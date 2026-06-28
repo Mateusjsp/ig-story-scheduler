@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Story: dry-run (não publica)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": ["--dry-run"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Story: publicar (real)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Renovar token",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/refresh_token.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}
