@@ -1,0 +1,85 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+// Trata a imagem (image-service /process -> URL pública) e cria media + post agendado.
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+
+  const form = await request.formData();
+  const file = form.get("file");
+  const caption = (form.get("caption") as string) || null;
+  const accountId = form.get("account_id") as string;
+  const scheduledAt = form.get("scheduled_at") as string;
+
+  if (!(file instanceof Blob) || !accountId || !scheduledAt) {
+    return NextResponse.json({ error: "dados incompletos" }, { status: 400 });
+  }
+
+  const scheduledDate = new Date(scheduledAt);
+  if (Number.isNaN(scheduledDate.getTime())) {
+    return NextResponse.json(
+      { error: "data de agendamento inválida" },
+      { status: 400 },
+    );
+  }
+  if (scheduledDate.getTime() <= Date.now()) {
+    return NextResponse.json(
+      { error: "o horário precisa ser no futuro" },
+      { status: 400 },
+    );
+  }
+
+  const base = process.env.IMAGE_SERVICE_URL;
+  if (!base) return NextResponse.json({ error: "IMAGE_SERVICE_URL ausente" }, { status: 500 });
+
+  // 1. trata + sobe pro Storage
+  const fd = new FormData();
+  fd.append("owner", user.id);
+  fd.append("file", file);
+  if (caption) fd.append("caption", caption);
+  const procRes = await fetch(`${base}/process`, {
+    method: "POST",
+    body: fd,
+    headers: { "X-Service-Token": process.env.SERVICE_SHARED_SECRET ?? "" },
+  });
+  if (!procRes.ok) {
+    return NextResponse.json(
+      { error: `tratamento falhou: ${await procRes.text()}` },
+      { status: 502 },
+    );
+  }
+  const processed = await procRes.json();
+
+  // 2. cria media
+  const { data: media, error: mErr } = await supabase
+    .from("media")
+    .insert({
+      owner: user.id,
+      account_id: accountId,
+      caption,
+      processed_path: processed.processed_path,
+      processed_url: processed.processed_url,
+      width: processed.width,
+      height: processed.height,
+      status: "processed",
+    })
+    .select("id")
+    .single();
+  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
+
+  // 3. agenda o post
+  const { error: pErr } = await supabase.from("posts").insert({
+    owner: user.id,
+    account_id: accountId,
+    media_id: media.id,
+    scheduled_at: scheduledDate.toISOString(),
+    status: "queued",
+  });
+  if (pErr) return NextResponse.json({ error: pErr.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true });
+}

@@ -1,0 +1,24 @@
+# Web
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pydantic-settings>=2.2
+
+# Imagem
+Pillow>=10.0
+numpy>=1.26
+opencv-python-headless>=4.8  # detecção de rosto (placement Fase 2)
+
+# Publicação Meta
+requests>=2.31
+
+# Supabase (Storage/DB) — usado a partir da Fase B
+supabase>=2.4
+
+# Agendamento autônomo + cifragem de token (Fases D/E)
+apscheduler>=3.10
+cryptography>=42.0
+
+# Dev/teste
+pytest>=8.0
+httpx>=0.27  # TestClient do FastAPI

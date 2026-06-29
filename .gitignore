@@ -1,4 +1,22 @@
+# Python
 .venv/
 __pycache__/
 .pytest_cache/
+*.pyc
+
+# Node / Next
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env (segredos)
 .env
+.env.local
+.env*.local
+image-service/.env
+web/.env.local
+
+# Build/sistema
+.DS_Store
