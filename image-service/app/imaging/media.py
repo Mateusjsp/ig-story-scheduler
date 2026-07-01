@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageOps
 
 from app.imaging.text_overlay import overlay_text
 
@@ -53,7 +53,9 @@ def build_story_image(img: Image.Image, caption: str | None = None) -> Image.Ima
 def process_image_bytes(data: bytes, caption: str | None = None) -> bytes:
     """Recebe bytes de uma imagem, devolve JPEG 1080x1920 pronto pro Story."""
     with Image.open(io.BytesIO(data)) as raw:
-        img = raw.convert("RGB")
+        # Câmeras de celular gravam a foto no sensor + tag EXIF Orientation.
+        # exif_transpose aplica a rotação nos pixels (senão sai deitada).
+        img = ImageOps.exif_transpose(raw).convert("RGB")
     story = build_story_image(img, caption)
     out = io.BytesIO()
     story.save(out, "JPEG", quality=JPEG_QUALITY)

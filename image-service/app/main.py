@@ -16,6 +16,7 @@ import hmac
 from contextlib import asynccontextmanager
 
 from fastapi import (
+    BackgroundTasks,
     Depends,
     FastAPI,
     File,
@@ -28,7 +29,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.imaging.media import STORY_SIZE, process_image_bytes
-from app.scheduler import start_scheduler
+from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
 from app.storage import upload_processed
 
@@ -71,6 +72,25 @@ def require_service_token(x_service_token: str | None = Header(default=None)) ->
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "image-service", "version": app.version}
+
+
+@app.post("/run-due")
+def run_due(
+    background_tasks: BackgroundTasks,
+    _: None = Depends(require_service_token),
+) -> dict:
+    """Dispara uma passada do publicador (posts vencidos).
+
+    Pensado pra ser chamado por um relógio externo (Supabase pg_cron) que também
+    'acorda' o serviço em hosts que hibernam. Roda em background pra responder na
+    hora — o trabalho de publicar não segura a request (importante no cold start).
+    O claim atômico (claim_due_posts) evita publicação dupla com o scheduler.
+    """
+    s = get_settings()
+    if not (s.supabase_url and s.supabase_service_key):
+        raise HTTPException(status_code=503, detail="Supabase não configurado.")
+    background_tasks.add_task(publish_due)
+    return {"status": "accepted"}
 
 
 async def _read_and_process(file: UploadFile, caption: str | None) -> bytes:
