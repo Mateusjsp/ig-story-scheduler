@@ -168,8 +168,10 @@ export function StoryEditor({
             </>
           )}
           {!bgSrc && (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-text-faint">
-              escolha uma foto
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center text-text-faint">
+              <span aria-hidden className="text-4xl">▦</span>
+              <p className="text-sm">Escolha uma foto pra começar</p>
+              <p className="text-xs">o Story aparece aqui em 9:16 com fundo desfocado</p>
             </div>
           )}
 
@@ -201,6 +203,9 @@ export function StoryEditor({
 
       {/* coluna de controles: ferramentas + propriedades + ajustes do post */}
       <div className="space-y-4">
+        <p className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">
+          Camadas
+        </p>
         <div className="relative flex flex-wrap gap-2">
           <button type="button" onClick={addText} className={btnCls}>+ Texto</button>
           <button type="button" onClick={() => setPickerOpen((v) => !v)} className={btnCls}>+ Emoji</button>
@@ -237,7 +242,7 @@ export function StoryEditor({
 }
 
 const btnCls =
-  "rounded-full border border-border px-3 py-1 text-xs text-text-dim transition-colors hover:border-amber hover:text-amber";
+  "rounded-full border border-border px-3 py-1.5 text-xs text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg";
 
 function textShadow(el: TextElement): string | undefined {
   if (!el.outline.enabled || el.outline.width <= 0) return undefined;
@@ -290,7 +295,8 @@ function TextLayer({
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
         cursor: "move",
-        outline: selected ? "1px solid rgba(240,136,62,0.9)" : "none",
+        outline: selected ? "2px solid rgba(240,136,62,0.95)" : "none",
+        outlineOffset: 2,
       }}
     >
       {el.text || " "}
@@ -324,7 +330,8 @@ function StickerLayer({
         width: `${el.w * 100}%`,
         transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
         cursor: "move",
-        outline: selected ? "1px solid rgba(240,136,62,0.9)" : "none",
+        outline: selected ? "2px solid rgba(240,136,62,0.95)" : "none",
+        outlineOffset: 2,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -346,18 +353,20 @@ function Handles({
   return (
     <>
       <span
+        role="button"
+        aria-label="Remover elemento"
         onPointerDown={(e) => {
           e.stopPropagation();
           e.preventDefault();
           onDelete();
         }}
         title="Remover"
-        style={{ ...handleStyle(0, "0%", "pointer"), background: "#e0492f", color: "#fff" }}
+        style={{ ...handleStyle(-14, "0%", "pointer"), background: "#e0492f", color: "#fff", borderColor: "#fff" }}
       >
         ×
       </span>
-      <span onPointerDown={onRotate} title="Girar" style={handleStyle(-26, "50%", "grab")}>⟳</span>
-      <span onPointerDown={onResize} title="Redimensionar" style={handleStyle("100%", "100%", "nwse-resize")}>⤡</span>
+      <span role="button" aria-label="Girar" onPointerDown={onRotate} title="Girar" style={handleStyle(-30, "50%", "grab")}>⟳</span>
+      <span role="button" aria-label="Redimensionar" onPointerDown={onResize} title="Redimensionar" style={handleStyle("100%", "100%", "nwse-resize")}>⤡</span>
     </>
   );
 }
@@ -368,15 +377,18 @@ function handleStyle(top: number | string, left: string, cursor: string): React.
     top: typeof top === "number" ? `${top}px` : top,
     left,
     transform: "translate(-50%, -50%)",
-    width: 22,
-    height: 22,
+    width: 28,
+    height: 28,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     borderRadius: "9999px",
     background: "#f0883e",
     color: "#100d0b",
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 1,
+    border: "2px solid #100d0b",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
     cursor,
     touchAction: "none",
   };
