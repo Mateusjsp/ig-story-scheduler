@@ -14,16 +14,18 @@ Evolução futura: detecção de rosto (Fase 2), saliency/segmentação (Fase 3)
 """
 from __future__ import annotations
 
+import logging
 import os
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from app.imaging.style import StyleConfig, hex_to_rgb
+
 # Zona segura do Story (frações da altura): topo/rodapé são cobertos pela UI.
 SAFE_TOP = 0.14
 SAFE_BOTTOM = 0.82
 SIDE_MARGIN = 0.08        # margem lateral (fração da largura)
-FONT_SIZE_FACTOR = 0.066  # tamanho da fonte ~ fração da largura
 MIN_FONT_SIZE = 28
 
 # Fase 2: penalidade por cobrir rosto. Grande o bastante pra dominar a busyness
@@ -35,25 +37,35 @@ FACE_PENALTY_WEIGHT = 1000.0
 FACE_MIN_SIZE_FACTOR = 0.10
 FACE_MIN_NEIGHBORS = 6  # mais alto = menos falso positivo
 
-# Fontes tentadas em ordem: Windows local -> Linux/CI (GitHub Actions) -> macOS.
-_FONT_CANDIDATES = [
-    "C:/Windows/Fonts/arialbd.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/Library/Fonts/Arial Bold.ttf",
-]
+def _load_font(
+    candidates: list[str], size: int
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Primeira TTF que carregar, da lista de candidatos da fonte escolhida.
 
-
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = []
+    STORY_FONT_PATH (se setado) tem prioridade — útil pra forçar uma fonte
+    específica no dev/CI sem tocar no código.
+    """
+    paths: list[str] = []
     if os.getenv("STORY_FONT_PATH"):
-        candidates.append(os.environ["STORY_FONT_PATH"])
-    candidates += _FONT_CANDIDATES
-    for path in candidates:
+        paths.append(os.environ["STORY_FONT_PATH"])
+    paths += candidates
+    for path in paths:
         try:
             return ImageFont.truetype(path, size)
         except OSError:
             continue
-    return ImageFont.load_default()  # fallback feio, mas não quebra
+    # Nenhuma TTF encontrada (ex.: container sem fonts-dejavu). O default é um
+    # bitmap minúsculo -> caption fica ilegível no Story. Avisa alto e tenta
+    # escalar (Pillow >=10 aceita size no load_default).
+    logging.getLogger("text_overlay").warning(
+        "Nenhuma fonte TTF encontrada (%s). Instale fonts-dejavu ou defina "
+        "STORY_FONT_PATH; o texto sairá minúsculo.",
+        paths,
+    )
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:  # Pillow <10 não aceita size
+        return ImageFont.load_default()
 
 
 def _gradient_magnitude(img: Image.Image) -> np.ndarray:
@@ -133,15 +145,29 @@ def _pick_y(grad, faces, top, bottom, block_h, x0, x1, step) -> int:
     return best_y
 
 
-def overlay_text(img: Image.Image, text: str) -> Image.Image:
-    """Desenha `text` na imagem (in-memory) com placement inteligente.
+def _fixed_y(position: str, top: int, bottom: int, block_h: int) -> int:
+    """Topo da faixa pra posições fixas, dentro da zona segura."""
+    if position == "top":
+        return top
+    if position == "bottom":
+        return max(top, bottom - block_h)
+    # center
+    return max(top, top + (bottom - top - block_h) // 2)
 
-    Retorna nova imagem RGB. Texto vazio = imagem inalterada.
+
+def overlay_text(
+    img: Image.Image, text: str, style: StyleConfig | None = None
+) -> Image.Image:
+    """Desenha `text` na imagem (in-memory) com o estilo do preset.
+
+    `style=None` usa o visual 'classic' (StyleConfig padrão). Retorna nova imagem
+    RGB. Texto vazio = imagem inalterada.
     """
     text = (text or "").strip()
     if not text:
         return img.convert("RGB")
 
+    style = style or StyleConfig()
     img = img.convert("RGB")
     W, H = img.size
     draw = ImageDraw.Draw(img, "RGBA")
@@ -151,10 +177,14 @@ def overlay_text(img: Image.Image, text: str) -> Image.Image:
     bottom = int(H * SAFE_BOTTOM)
     avail_h = bottom - top
 
+    text_rgb = hex_to_rgb(style.text_color)
+    stroke_w = style.outline.width if style.outline.enabled else 0
+    stroke_rgb = hex_to_rgb(style.outline.color)
+
     # Encolhe a fonte até o bloco caber na zona segura.
-    size = max(MIN_FONT_SIZE, int(W * FONT_SIZE_FACTOR))
+    size = max(MIN_FONT_SIZE, int(W * style.size_factor))
     while size >= MIN_FONT_SIZE:
-        font = _load_font(size)
+        font = _load_font(style.font_candidates(), size)
         lines = _wrap_lines(draw, text, font, max_w)
         asc, desc = font.getmetrics()
         line_h = asc + desc
@@ -164,32 +194,53 @@ def overlay_text(img: Image.Image, text: str) -> Image.Image:
             break
         size -= 4
 
-    grad = _gradient_magnitude(img)
-    faces = _detect_faces(img)
-    step = max(8, line_h // 3)
-    y0 = _pick_y(grad, faces, top, min(bottom, H), block_h, margin, W - margin, step)
+    # Posição: 'auto' escolhe a faixa mais calma desviando de rostos; fixas
+    # (top/center/bottom) pulam a análise e usam a banda pedida.
+    if style.position == "auto":
+        grad = _gradient_magnitude(img)
+        faces = _detect_faces(img)
+        step = max(8, line_h // 3)
+        y0 = _pick_y(grad, faces, top, min(bottom, H), block_h, margin, W - margin, step)
+    else:
+        y0 = _fixed_y(style.position, top, min(bottom, H), block_h)
 
     block_w = max(draw.textlength(ln, font=font) for ln in lines)
     bx0 = (W - block_w) / 2.0
 
-    # Scrim adaptativo: mede luminância local; fundo claro -> scrim mais forte.
-    pad = int(size * 0.4)
-    box = [bx0 - pad, y0 - pad / 2, bx0 + block_w + pad, y0 + block_h + pad / 2]
-    crop_box = (
-        int(max(0, box[0])),
-        int(max(0, box[1])),
-        int(min(W, box[2])),
-        int(min(H, box[3])),
-    )
-    luma = float(np.asarray(img.crop(crop_box).convert("L")).mean())
-    alpha = 160 if luma > 130 else 110
-    draw.rounded_rectangle(box, radius=int(size * 0.35), fill=(0, 0, 0, alpha))
+    # Scrim (caixa): opcional. Adaptativo mede a luminância local (fundo claro ->
+    # mais forte); senão usa a opacidade fixa do preset. Se `outline`, o scrim
+    # normalmente fica desligado e a legibilidade vem do contorno.
+    if style.scrim.enabled:
+        pad = int(size * 0.4)
+        box = [bx0 - pad, y0 - pad / 2, bx0 + block_w + pad, y0 + block_h + pad / 2]
+        scrim_rgb = hex_to_rgb(style.scrim.color)
+        if style.scrim.adaptive:
+            crop_box = (
+                int(max(0, box[0])),
+                int(max(0, box[1])),
+                int(min(W, box[2])),
+                int(min(H, box[3])),
+            )
+            luma = float(np.asarray(img.crop(crop_box).convert("L")).mean())
+            alpha = 160 if luma > 130 else 110
+        else:
+            alpha = style.scrim.opacity
+        draw.rounded_rectangle(
+            box, radius=int(size * 0.35), fill=(*scrim_rgb, alpha)
+        )
 
-    # Texto branco, linhas centralizadas.
+    # Texto, linhas centralizadas (com contorno se pedido).
     ty = y0
     for line in lines:
         lw = draw.textlength(line, font=font)
-        draw.text(((W - lw) / 2.0, ty), line, font=font, fill=(255, 255, 255, 255))
+        draw.text(
+            ((W - lw) / 2.0, ty),
+            line,
+            font=font,
+            fill=(*text_rgb, 255),
+            stroke_width=stroke_w,
+            stroke_fill=(*stroke_rgb, 255),
+        )
         ty += line_h + gap
 
     return img

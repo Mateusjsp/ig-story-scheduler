@@ -7,6 +7,7 @@ const NAV = [
   { href: "/dashboard", label: "Visão geral", glyph: "◴" },
   { href: "/dashboard/accounts", label: "Contas", glyph: "◍" },
   { href: "/dashboard/media", label: "Mídia", glyph: "▦" },
+  { href: "/dashboard/presets", label: "Presets", glyph: "◆" },
   { href: "/dashboard/schedule", label: "Agenda", glyph: "◷" },
 ];
 

@@ -29,6 +29,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.imaging.media import STORY_SIZE, process_image_bytes
+from app.imaging.style import StyleConfig
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
 from app.storage import upload_processed
@@ -93,14 +94,24 @@ def run_due(
     return {"status": "accepted"}
 
 
-async def _read_and_process(file: UploadFile, caption: str | None) -> bytes:
+def _parse_style(style: str | None) -> StyleConfig:
+    """JSON do preset -> StyleConfig. Ausente = 'classic'. Inválido -> 400."""
+    try:
+        return StyleConfig.parse(style)
+    except Exception as exc:  # JSON malformado ou campo fora do schema
+        raise HTTPException(status_code=400, detail=f"Style inválido: {exc}")
+
+
+async def _read_and_process(
+    file: UploadFile, caption: str | None, style: StyleConfig
+) -> bytes:
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Imagem maior que 25 MB.")
     try:
-        return process_image_bytes(data, (caption or "").strip() or None)
+        return process_image_bytes(data, (caption or "").strip() or None, style)
     except Exception as exc:  # imagem inválida, formato não suportado, etc.
         raise HTTPException(status_code=400, detail=f"Falha ao processar: {exc}")
 
@@ -109,9 +120,10 @@ async def _read_and_process(file: UploadFile, caption: str | None) -> bytes:
 async def preview(
     file: UploadFile = File(...),
     caption: str | None = Form(default=None),
+    style: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> Response:
-    out = await _read_and_process(file, caption)
+    out = await _read_and_process(file, caption, _parse_style(style))
     return Response(content=out, media_type="image/jpeg")
 
 
@@ -120,10 +132,11 @@ async def process(
     owner: str = Form(...),
     file: UploadFile = File(...),
     caption: str | None = Form(default=None),
+    style: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
     """Trata a imagem, grava no Storage e retorna a URL pública (image_url)."""
-    out = await _read_and_process(file, caption)
+    out = await _read_and_process(file, caption, _parse_style(style))
     try:
         path, url = upload_processed(owner, out)
     except Exception as exc:

@@ -1,8 +1,12 @@
 FROM python:3.12-slim
 
-# libglib2.0-0 é exigido pelo opencv-python-headless em runtime.
+# libglib2.0-0: exigido pelo opencv-python-headless em runtime.
+# fonts-dejavu (full): fornece as variantes usadas pelos presets — Sans-Bold,
+# Serif-Bold, SansCondensed-Bold e SansMono-Bold. Sem fonte, o overlay cai no
+# ImageFont.load_default() (bitmap ~11px) e o caption fica invisível no Story de
+# 1080px. A imagem slim não traz nenhuma fonte.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libglib2.0-0 \
+    && apt-get install -y --no-install-recommends libglib2.0-0 fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv

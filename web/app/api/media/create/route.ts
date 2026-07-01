@@ -12,6 +12,9 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const file = form.get("file");
   const caption = (form.get("caption") as string) || null;
+  // `style` é o JSON do preset resolvido no front. Repassado como está pro
+  // image-service, que valida (Pydantic). Ausente = visual 'classic'.
+  const style = (form.get("style") as string) || null;
   const accountId = form.get("account_id") as string;
   const scheduledAt = form.get("scheduled_at") as string | null;
   // "Postar agora": enfileira com scheduled_at = agora; o scheduler publica no
@@ -52,6 +55,7 @@ export async function POST(request: NextRequest) {
   fd.append("owner", user.id);
   fd.append("file", file);
   if (caption) fd.append("caption", caption);
+  if (style) fd.append("style", style);
   let procRes: Response;
   try {
     procRes = await fetch(`${base}/process`, {

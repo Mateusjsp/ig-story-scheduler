@@ -1,10 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PrimaryButton } from "@/components/ui";
+import {
+  BUILTIN_PRESETS,
+  DEFAULT_STYLE,
+  normalizeStyle,
+  type StyleConfig,
+} from "@/lib/presets";
 
 type Account = { id: string; label: string };
+type PresetOption = { id: string; name: string; config: StyleConfig };
 
 export function Uploader({ accounts }: { accounts: Account[] }) {
   const router = useRouter();
@@ -16,7 +24,37 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const [loading, setLoading] = useState<"preview" | "schedule" | "now" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"schedule" | "now" | null>(null);
+  const [presets, setPresets] = useState<PresetOption[]>([]);
+  const [presetId, setPresetId] = useState(BUILTIN_PRESETS[0].id);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Presets do usuário (banco) + embutidos. Um marcado default vira o inicial.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/presets")
+      .then((r) => (r.ok ? r.json() : { presets: [] }))
+      .then((d: { presets?: { id: string; name: string; config: StyleConfig; is_default?: boolean }[] }) => {
+        if (!alive) return;
+        const user = (d.presets ?? []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          config: normalizeStyle(p.config),
+        }));
+        setPresets(user);
+        const def = (d.presets ?? []).find((p) => p.is_default);
+        if (def) setPresetId(def.id);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const allPresets: PresetOption[] = [...BUILTIN_PRESETS, ...presets];
+
+  function resolveStyle(): StyleConfig {
+    return allPresets.find((p) => p.id === presetId)?.config ?? DEFAULT_STYLE;
+  }
 
   async function runPreview() {
     if (!file) return;
@@ -26,6 +64,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
       const fd = new FormData();
       fd.append("file", file);
       if (caption.trim()) fd.append("caption", caption.trim());
+      fd.append("style", JSON.stringify(resolveStyle()));
       const res = await fetch("/api/preview", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "falha");
       const blob = await res.blob();
@@ -53,6 +92,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
       // (UTC) aqui no browser pra o server comparar o instante certo.
       else fd.append("scheduled_at", new Date(when).toISOString());
       if (caption.trim()) fd.append("caption", caption.trim());
+      fd.append("style", JSON.stringify(resolveStyle()));
       const res = await fetch("/api/media/create", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "falha");
       setDone(immediate ? "now" : "schedule");
@@ -94,6 +134,43 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           rows={3}
           className="w-full resize-none rounded-md border border-border bg-surface/60 px-4 py-3 text-text placeholder:text-text-faint focus:border-amber focus:outline-none"
         />
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="preset" className="text-xs text-text-dim">
+              Estilo do texto
+            </label>
+            <Link
+              href="/dashboard/presets"
+              className="text-xs text-amber underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              Gerenciar presets
+            </Link>
+          </div>
+          <select
+            id="preset"
+            value={presetId}
+            onChange={(e) => setPresetId(e.target.value)}
+            className="w-full rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm text-text focus:border-amber focus:outline-none"
+          >
+            <optgroup label="Embutidos" className="bg-bg-raised">
+              {BUILTIN_PRESETS.map((p) => (
+                <option key={p.id} value={p.id} className="bg-bg-raised">
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+            {presets.length > 0 && (
+              <optgroup label="Meus presets" className="bg-bg-raised">
+                {presets.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-bg-raised">
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <select
