@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { encryptToken } from "@/lib/crypto";
+import { encryptToken, decryptToken } from "@/lib/crypto";
 
 // Callback do OAuth: code -> token curto -> token longo (60d) -> salva ig_account.
 export async function GET(request: NextRequest) {
@@ -21,11 +21,27 @@ export async function GET(request: NextRequest) {
     return dest("error=state_invalido");
   }
 
-  const appId = process.env.INSTAGRAM_APP_ID!;
-  const appSecret = process.env.INSTAGRAM_APP_SECRET!;
   const redirectUri = `${origin}/api/instagram/callback`;
 
   try {
+    // Credenciais do app vêm do banco (por owner), não de env.
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return NextResponse.redirect(`${origin}/login`);
+
+    const { data: creds } = await supabase
+      .from("ig_app_credentials")
+      .select("app_id, app_secret_enc")
+      .eq("owner", user.id)
+      .maybeSingle();
+    if (!creds?.app_id || !creds?.app_secret_enc) {
+      return dest("error=sem_credenciais");
+    }
+    const appId = creds.app_id;
+    const appSecret = decryptToken(creds.app_secret_enc);
+
     // 1. code -> token curto (+ user_id)
     const shortRes = await fetch("https://api.instagram.com/oauth/access_token", {
       method: "POST",
@@ -58,12 +74,6 @@ export async function GET(request: NextRequest) {
     const me = await (await fetch(meUrl)).json();
 
     // 4. salva (RLS: owner = auth.uid()). Upsert por (owner, ig_user_id).
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.redirect(`${origin}/login`);
-
     const { error } = await supabase.from("ig_accounts").upsert(
       {
         owner: user.id,

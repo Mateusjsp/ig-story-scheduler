@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, Card, Badge, EmptyState } from "@/components/ui";
 
@@ -11,12 +12,12 @@ export default async function AccountsPage() {
   return (
     <>
       <PageHeader eyebrow="● contas" title="Contas do Instagram">
-        <a
-          href="/api/instagram/start"
+        <Link
+          href="/dashboard/accounts/connect"
           className="inline-flex items-center gap-2 rounded-md bg-amber px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-amber-bright"
         >
           ＋ Conectar Instagram
-        </a>
+        </Link>
       </PageHeader>
 
       {accounts && accounts.length > 0 ? (

@@ -19,8 +19,20 @@ export default function LoginPage() {
     const supabase = createClient();
 
     if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password });
-      setMsg(error ? error.message : "Conta criada. Confirme o e-mail se exigido, depois entre.");
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) {
+        setMsg(error.message);
+      } else {
+        setMode("signin");
+        setPassword("");
+        setMsg(
+          `Enviamos um e-mail de confirmação para ${email}. Confirme o link e volte aqui para entrar.`,
+        );
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMsg(error.message);
