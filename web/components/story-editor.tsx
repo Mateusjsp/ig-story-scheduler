@@ -155,7 +155,6 @@ export function StoryEditor({
               <button type="button" onClick={() => duplicate(selected.id)} className={btnCls}>Duplicar</button>
               <button type="button" onClick={() => reorder(selected.id, 1)} className={btnCls}>Frente</button>
               <button type="button" onClick={() => reorder(selected.id, -1)} className={btnCls}>Trás</button>
-              <button type="button" onClick={() => remove(selected.id)} className={`${btnCls} hover:border-red hover:text-red`}>Deletar</button>
             </>
           )}
           {pickerOpen && (
@@ -197,6 +196,7 @@ export function StoryEditor({
                 onBody={(e) => onPointerDownBody(e, el)}
                 onRotate={(e) => onPointerDownRotate(e, el)}
                 onResize={(e) => onPointerDownResize(e, el)}
+                onDelete={() => remove(el.id)}
               />
             ) : (
               <StickerLayer
@@ -206,6 +206,7 @@ export function StoryEditor({
                 onBody={(e) => onPointerDownBody(e, el)}
                 onRotate={(e) => onPointerDownRotate(e, el)}
                 onResize={(e) => onPointerDownResize(e, el)}
+                onDelete={() => remove(el.id)}
               />
             ),
           )}
@@ -250,12 +251,14 @@ function TextLayer({
   onBody,
   onRotate,
   onResize,
+  onDelete,
 }: {
   el: TextElement;
   selected: boolean;
   onBody: (e: RPointerEvent) => void;
   onRotate: (e: RPointerEvent) => void;
   onResize: (e: RPointerEvent) => void;
+  onDelete: () => void;
 }) {
   const scrimBg =
     el.scrim.enabled
@@ -286,7 +289,7 @@ function TextLayer({
       }}
     >
       {el.text || " "}
-      {selected && <Handles onRotate={onRotate} onResize={onResize} />}
+      {selected && <Handles onRotate={onRotate} onResize={onResize} onDelete={onDelete} />}
     </div>
   );
 }
@@ -297,12 +300,14 @@ function StickerLayer({
   onBody,
   onRotate,
   onResize,
+  onDelete,
 }: {
   el: StickerElement;
   selected: boolean;
   onBody: (e: RPointerEvent) => void;
   onRotate: (e: RPointerEvent) => void;
   onResize: (e: RPointerEvent) => void;
+  onDelete: () => void;
 }) {
   return (
     <div
@@ -319,7 +324,7 @@ function StickerLayer({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={notoUrl(el.emoji)} alt={el.emoji} draggable={false} className="pointer-events-none block w-full" />
-      {selected && <Handles onRotate={onRotate} onResize={onResize} />}
+      {selected && <Handles onRotate={onRotate} onResize={onResize} onDelete={onDelete} />}
     </div>
   );
 }
@@ -327,12 +332,25 @@ function StickerLayer({
 function Handles({
   onRotate,
   onResize,
+  onDelete,
 }: {
   onRotate: (e: RPointerEvent) => void;
   onResize: (e: RPointerEvent) => void;
+  onDelete: () => void;
 }) {
   return (
     <>
+      <span
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onDelete();
+        }}
+        title="Remover"
+        style={{ ...handleStyle(0, "0%", "pointer"), background: "#e0492f", color: "#fff" }}
+      >
+        ×
+      </span>
       <span onPointerDown={onRotate} title="Girar" style={handleStyle(-26, "50%", "grab")}>⟳</span>
       <span onPointerDown={onResize} title="Redimensionar" style={handleStyle("100%", "100%", "nwse-resize")}>⤡</span>
     </>
