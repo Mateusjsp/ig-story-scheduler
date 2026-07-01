@@ -20,6 +20,14 @@ const REQUIREMENTS = [
   },
 ];
 
+// Passo a passo de onde achar as credenciais no painel da Meta.
+const WHERE = [
+  "Acesse developers.facebook.com → Meus apps → selecione (ou crie) seu app.",
+  "No menu, abra Instagram → API setup with Instagram login.",
+  "Na seção “2. Set up Instagram business login”, copie o Instagram app ID e o Instagram app secret.",
+  "ATENÇÃO: não use o “App ID” do topo do painel (esse é o do app Meta/Facebook). Precisa ser o Instagram app ID desta seção — senão a Meta responde “Invalid platform app”.",
+];
+
 export default async function ConnectInstructionsPage() {
   const supabase = await createClient();
   const {
@@ -49,7 +57,7 @@ export default async function ConnectInstructionsPage() {
         <div className="space-y-3">
           {REQUIREMENTS.map((r) => (
             <Card key={r.title} className="flex gap-4">
-              <span className="text-xl text-amber">{r.glyph}</span>
+              <span aria-hidden="true" className="text-xl text-amber">{r.glyph}</span>
               <div>
                 <p className="font-display text-lg">{r.title}</p>
                 <p className="mt-1 text-sm text-text-dim">
@@ -59,6 +67,23 @@ export default async function ConnectInstructionsPage() {
             </Card>
           ))}
         </div>
+
+        <Card className="space-y-3">
+          <p className="font-display text-lg">Onde pegar o App ID + App Secret</p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-text-dim marker:text-amber">
+            {WHERE.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <a
+            href="https://developers.facebook.com/apps"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block rounded-sm text-sm text-amber underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          >
+            Abrir Meta for Developers ↗
+          </a>
+        </Card>
 
         <CredentialsForm
           initialAppId={creds?.app_id ?? ""}

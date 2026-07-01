@@ -42,10 +42,18 @@ export function CredentialsForm({
     <Card>
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block font-mono text-xs uppercase tracking-wider text-text-faint">
+          <label
+            htmlFor="app-id"
+            className="mb-1 block font-mono text-xs uppercase tracking-wider text-text-faint"
+          >
             App ID
           </label>
           <input
+            id="app-id"
+            name="app_id"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
             required
             value={appId}
             onChange={(e) => setAppId(e.target.value)}
@@ -55,11 +63,18 @@ export function CredentialsForm({
         </div>
 
         <div>
-          <label className="mb-1 block font-mono text-xs uppercase tracking-wider text-text-faint">
+          <label
+            htmlFor="app-secret"
+            className="mb-1 block font-mono text-xs uppercase tracking-wider text-text-faint"
+          >
             App Secret
           </label>
           <input
+            id="app-secret"
+            name="app_secret"
             type="password"
+            autoComplete="off"
+            spellCheck={false}
             required={!hasSecret}
             value={appSecret}
             onChange={(e) => setAppSecret(e.target.value)}
@@ -68,23 +83,25 @@ export function CredentialsForm({
           />
         </div>
 
-        {error && (
-          <p className="rounded-md border border-red/40 bg-surface px-3 py-2 text-sm text-red">
-            {error}
-          </p>
-        )}
+        <div aria-live="polite">
+          {error && (
+            <p className="rounded-md border border-red/40 bg-surface px-3 py-2 text-sm text-red">
+              {error}
+            </p>
+          )}
+        </div>
 
         <div className="flex items-center gap-3 pt-1">
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md bg-amber px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-amber-bright disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-amber px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-amber-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
           >
             {loading ? "salvando…" : "Salvar e conectar →"}
           </button>
           <Link
             href="/dashboard/accounts"
-            className="text-sm text-text-faint underline-offset-4 transition-colors hover:text-amber hover:underline"
+            className="rounded-sm text-sm text-text-faint underline-offset-4 transition-colors hover:text-amber hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
             Cancelar
           </Link>

@@ -18,13 +18,16 @@ export function NavLink({
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+      className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${
         active
           ? "bg-surface text-text"
           : "text-text-dim hover:bg-surface/50 hover:text-text"
       }`}
     >
-      <span className={active ? "text-amber" : "text-text-faint group-hover:text-amber"}>
+      <span
+        aria-hidden="true"
+        className={active ? "text-amber" : "text-text-faint group-hover:text-amber"}
+      >
         {glyph}
       </span>
       {children}

@@ -14,9 +14,9 @@ export default async function AccountsPage() {
       <PageHeader eyebrow="● contas" title="Contas do Instagram">
         <Link
           href="/dashboard/accounts/connect"
-          className="inline-flex items-center gap-2 rounded-md bg-amber px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-amber-bright"
+          className="inline-flex items-center gap-2 rounded-md bg-amber px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-amber-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          ＋ Conectar Instagram
+          <span aria-hidden="true">＋</span> Conectar Instagram
         </Link>
       </PageHeader>
 

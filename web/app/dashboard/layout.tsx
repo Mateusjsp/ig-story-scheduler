@@ -23,8 +23,17 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-amber focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-bg"
+      >
+        Pular para o conteúdo
+      </a>
       <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-border bg-bg-raised/60 px-5 py-7">
-        <Link href="/dashboard" className="mb-10 block">
+        <Link
+          href="/dashboard"
+          className="mb-10 block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+        >
           <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-amber">
             ● darkroom
           </span>
@@ -46,14 +55,14 @@ export default async function DashboardLayout({
             {user.email}
           </p>
           <form action="/auth/signout" method="post">
-            <button className="text-sm text-text-dim underline-offset-4 transition-colors hover:text-red hover:underline">
+            <button className="rounded-sm text-sm text-text-dim underline-offset-4 transition-colors hover:text-red hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red focus-visible:ring-offset-2 focus-visible:ring-offset-bg">
               Sair
             </button>
           </form>
         </div>
       </aside>
 
-      <main className="flex-1 px-10 py-9">{children}</main>
+      <main id="main" className="flex-1 px-10 py-9">{children}</main>
     </div>
   );
 }

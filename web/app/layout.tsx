@@ -23,7 +23,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${fraunces.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased [color-scheme:dark]`}
     >
       <body className="min-h-full">{children}</body>
     </html>

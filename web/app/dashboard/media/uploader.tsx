@@ -67,9 +67,9 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/40 text-text-dim transition-colors hover:border-amber hover:text-amber"
+          className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/40 text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          <span className="text-2xl">＋</span>
+          <span aria-hidden="true" className="text-2xl">＋</span>
           <span className="text-sm">{file ? file.name : "Escolher foto"}</span>
         </button>
         <input
@@ -86,6 +86,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         <textarea
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
+          aria-label="Legenda"
           placeholder="Legenda (opcional) — desenhada na imagem"
           rows={3}
           className="w-full resize-none rounded-md border border-border bg-surface/60 px-4 py-3 text-text placeholder:text-text-faint focus:border-amber focus:outline-none"
@@ -95,7 +96,8 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm focus:border-amber focus:outline-none"
+            aria-label="Conta"
+            className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm text-text focus:border-amber focus:outline-none"
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id} className="bg-bg-raised">
@@ -107,6 +109,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
             type="datetime-local"
             value={when}
             onChange={(e) => setWhen(e.target.value)}
+            aria-label="Agendar para"
             className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm focus:border-amber focus:outline-none"
           />
         </div>
@@ -116,7 +119,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
             type="button"
             onClick={runPreview}
             disabled={!file || loading !== null}
-            className="rounded-md border border-border px-4 py-2 text-sm text-text-dim transition-colors hover:border-amber hover:text-amber disabled:opacity-50"
+            className="rounded-md border border-border px-4 py-2 text-sm text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
           >
             {loading === "preview" ? "revelando…" : "Preview"}
           </button>
@@ -128,15 +131,23 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           </PrimaryButton>
         </div>
 
-        {done && <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>}
-        {error && <p className="text-sm text-red">{error}</p>}
+        <div aria-live="polite">
+          {done && <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>}
+          {error && <p className="text-sm text-red">{error}</p>}
+        </div>
       </div>
 
       <div className="sticky top-9">
         <div className="mx-auto aspect-[9/16] w-full overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl">
           {previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt="preview" className="h-full w-full object-cover" />
+            <img
+              src={previewUrl}
+              alt="Preview do Story"
+              width={360}
+              height={640}
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-faint">
               o preview do Story aparece aqui
