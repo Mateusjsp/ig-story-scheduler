@@ -4,13 +4,22 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+type Mode = "signin" | "signup" | "forgot";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<Mode>("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setMsg(null);
+    setPassword("");
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,7 +31,10 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: { display_name: name.trim() },
+        },
       });
       if (error) {
         setMsg(error.message);
@@ -31,6 +43,18 @@ export default function LoginPage() {
         setPassword("");
         setMsg(
           `Enviamos um e-mail de confirmação para ${email}. Confirme o link e volte aqui para entrar.`,
+        );
+      }
+    } else if (mode === "forgot") {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      });
+      if (error) {
+        setMsg(error.message);
+      } else {
+        setMode("signin");
+        setMsg(
+          `Se existir uma conta para ${email}, enviamos um link para redefinir a senha.`,
         );
       }
     } else {
@@ -43,6 +67,18 @@ export default function LoginPage() {
     }
     setLoading(false);
   }
+
+  const heading =
+    mode === "signin" ? "Revele" : mode === "signup" ? "Comece" : "Recupere";
+  const submitLabel = loading
+    ? mode === "forgot"
+      ? "enviando…"
+      : "revelando…"
+    : mode === "signin"
+      ? "Entrar"
+      : mode === "signup"
+        ? "Criar conta"
+        : "Enviar link";
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
@@ -59,15 +95,28 @@ export default function LoginPage() {
             ● rec · darkroom
           </p>
           <h1 className="mt-3 font-display text-5xl font-light leading-none tracking-tight">
-            {mode === "signin" ? "Revele" : "Comece"}
+            {heading}
             <span className="text-amber">.</span>
           </h1>
           <p className="mt-3 text-sm text-text-dim">
-            Sua fila de Stories, publicada sozinha.
+            {mode === "forgot"
+              ? "Enviamos um link pra você criar uma nova senha."
+              : "Sua fila de Stories, publicada sozinha."}
           </p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3">
+          {mode === "signup" && (
+            <Field
+              type="text"
+              label="Nome"
+              name="name"
+              autoComplete="name"
+              placeholder="como devemos te chamar?"
+              value={name}
+              onChange={setName}
+            />
+          )}
           <Field
             type="email"
             label="E-mail"
@@ -77,23 +126,37 @@ export default function LoginPage() {
             value={email}
             onChange={setEmail}
           />
-          <Field
-            type="password"
-            label="Senha"
-            name="password"
-            autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            placeholder="mínimo 6 caracteres…"
-            value={password}
-            onChange={setPassword}
-            minLength={6}
-          />
+          {mode !== "forgot" && (
+            <Field
+              type="password"
+              label="Senha"
+              name="password"
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              placeholder="mínimo 6 caracteres…"
+              value={password}
+              onChange={setPassword}
+              minLength={6}
+            />
+          )}
+
+          {mode === "signin" && (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => switchMode("forgot")}
+                className="rounded-sm text-xs text-text-faint underline-offset-4 transition-colors hover:text-amber hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
             className="group relative w-full overflow-hidden rounded-md bg-amber px-4 py-3 font-medium text-bg transition-colors hover:bg-amber-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
           >
-            {loading ? "revelando…" : mode === "signin" ? "Entrar" : "Criar conta"}
+            {submitLabel}
           </button>
 
           <div aria-live="polite">
@@ -107,10 +170,16 @@ export default function LoginPage() {
 
         <button
           type="button"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+          onClick={() =>
+            switchMode(mode === "signin" ? "signup" : "signin")
+          }
           className="mt-6 w-full rounded-sm text-center text-sm text-text-faint underline-offset-4 transition-colors hover:text-amber hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          {mode === "signin" ? "Não tem conta? Criar uma" : "Já tem conta? Entrar"}
+          {mode === "signin"
+            ? "Não tem conta? Criar uma"
+            : mode === "signup"
+              ? "Já tem conta? Entrar"
+              : "Voltar para o login"}
         </button>
       </div>
     </main>
@@ -143,7 +212,7 @@ function Field({
       name={name}
       autoComplete={autoComplete}
       spellCheck={false}
-      autoCapitalize="none"
+      autoCapitalize={type === "text" ? "words" : "none"}
       required
       minLength={minLength}
       placeholder={placeholder}

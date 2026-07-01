@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.imaging.document import StoryDoc
-from app.imaging.media import STORY_SIZE, process_image_bytes
+from app.imaging.media import STORY_SIZE, normalize_for_web, process_image_bytes
 from app.imaging.style import StyleConfig, resolve_font_path
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
@@ -150,6 +150,23 @@ async def preview(
 ) -> Response:
     out = _process_or_400(await file.read(), caption, _parse_style(style), _parse_doc(doc))
     return Response(content=out, media_type="image/jpeg")
+
+
+@app.post("/normalize")
+async def normalize(
+    file: UploadFile = File(...),
+    _: None = Depends(require_service_token),
+) -> Response:
+    """JPEG reduzido da foto (abre HEIC/iPhone) pro editor exibir no browser."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Imagem maior que 25 MB.")
+    try:
+        return Response(content=normalize_for_web(data), media_type="image/jpeg")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Falha ao ler imagem: {exc}")
 
 
 @app.post("/process")

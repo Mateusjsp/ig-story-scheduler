@@ -24,28 +24,50 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
 
   const MAX_BYTES = 25 * 1024 * 1024;
 
-  function pickFile(f: File | null) {
+  async function pickFile(f: File | null) {
     setDone(null);
     setRenderUrl(null);
     setError(null);
-    if (f) {
-      if (!f.type.startsWith("image/")) {
-        setError("Selecione um arquivo de imagem.");
-        return;
-      }
-      if (f.size > MAX_BYTES) {
-        setError("Imagem maior que 25 MB — escolha uma menor.");
-        return;
-      }
-      // HEIC (iPhone) não renderiza em <img>: avisa, mas deixa seguir (o server trata).
-      if (/heic|heif/i.test(f.type) || /\.hei[cf]$/i.test(f.name)) {
-        setError("Foto HEIC do iPhone: o preview pode não aparecer, mas o post é gerado normalmente.");
-      }
+    if (!f) {
+      setFile(null);
+      setBgUrl((old) => (old && URL.revokeObjectURL(old), null));
+      return;
     }
-    setFile(f);
+    const isHeic = /heic|heif/i.test(f.type) || /\.hei[cf]$/i.test(f.name);
+    if (!f.type.startsWith("image/") && !isHeic) {
+      setError("Selecione um arquivo de imagem.");
+      return;
+    }
+    if (f.size > MAX_BYTES) {
+      setError("Imagem maior que 25 MB — escolha uma menor.");
+      return;
+    }
+    setFile(f); // sempre enviamos o original (o server trata HEIC)
+
+    // HEIC não renderiza em <img>: pede um JPEG normalizado ao server pro preview.
+    if (isHeic) {
+      setError("convertendo foto do iPhone…");
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/normalize", { method: "POST", body: fd });
+        if (!res.ok) throw new Error();
+        const blob = await res.blob();
+        setBgUrl((old) => {
+          if (old) URL.revokeObjectURL(old);
+          return URL.createObjectURL(blob);
+        });
+        setError(null);
+      } catch {
+        setError("Não consegui pré-visualizar o HEIC, mas o post será gerado ao publicar.");
+        setBgUrl((old) => (old && URL.revokeObjectURL(old), null));
+      }
+      return;
+    }
+
     setBgUrl((old) => {
       if (old) URL.revokeObjectURL(old);
-      return f ? URL.createObjectURL(f) : null;
+      return URL.createObjectURL(f);
     });
   }
 

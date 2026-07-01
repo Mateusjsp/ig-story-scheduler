@@ -6,6 +6,7 @@ pydantic-settings>=2.2
 
 # Imagem
 Pillow>=10.0
+pillow-heif>=0.16  # abre HEIC/HEIF (fotos de iPhone)
 numpy>=1.26
 opencv-python-headless>=4.8  # detecção de rosto (placement Fase 2)
 

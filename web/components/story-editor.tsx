@@ -30,6 +30,10 @@ type Gesture =
   | { kind: "pan"; sx: number; sy: number; ox: number; oy: number };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+// helpers de módulo (fora do render) — evita a regra de pureza do react-hooks.
+const nowMs = () => Date.now();
+let _dupSeq = 0;
+const dupId = (type: string) => `${type}-dup-${(_dupSeq += 1)}`;
 
 export function StoryEditor({
   doc,
@@ -47,12 +51,54 @@ export function StoryEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
+  const [editKey, setEditKey] = useState(0); // muda ao pedir edição de texto (duplo-clique)
 
   const selected = doc.elements.find((e) => e.id === selectedId) ?? null;
   const photo: Photo = doc.photo ?? DEFAULT_PHOTO;
 
+  // Undo/redo com coalescência: mudanças a menos de 400ms (arrasto/slider) viram
+  // um passo só. commit() é a via de toda mutação; snapshota o doc anterior.
+  const history = useRef<{ past: StoryDoc[]; future: StoryDoc[] }>({ past: [], future: [] });
+  const lastCommit = useRef(0);
+  const [histLen, setHistLen] = useState({ u: 0, r: 0 }); // espelho pro render (undo/redo habilitados)
+
+  function syncHist() {
+    setHistLen({ u: history.current.past.length, r: history.current.future.length });
+  }
+
+  function commit(next: StoryDoc) {
+    const now = nowMs();
+    if (now - lastCommit.current > 400) {
+      history.current.past.push(doc);
+      if (history.current.past.length > 60) history.current.past.shift();
+      history.current.future = [];
+      syncHist();
+    }
+    lastCommit.current = now;
+    onChange(next);
+  }
+
+  function undo() {
+    const h = history.current;
+    if (!h.past.length) return;
+    h.future.push(doc);
+    lastCommit.current = 0;
+    syncHist();
+    onChange(h.past.pop()!);
+  }
+
+  function redo() {
+    const h = history.current;
+    if (!h.future.length) return;
+    h.past.push(doc);
+    lastCommit.current = 0;
+    syncHist();
+    onChange(h.future.pop()!);
+  }
+
   function setPhoto(patch: Partial<Photo>) {
-    onChange({ ...doc, photo: { ...photo, ...patch } });
+    commit({ ...doc, photo: { ...photo, ...patch } });
   }
 
   // Formato da foto + escala pra preencher o frame 9:16 (a partir do aspecto).
@@ -63,7 +109,7 @@ export function StoryEditor({
   const fillScale = imgAR == null ? 1 : Math.max(frameAR / imgAR, imgAR / frameAR);
 
   function update(id: string, patch: Patch) {
-    onChange({
+    commit({
       ...doc,
       elements: doc.elements.map((e) => (e.id === id ? ({ ...e, ...patch } as Element) : e)),
     });
@@ -71,13 +117,13 @@ export function StoryEditor({
 
   function addText() {
     const el = newTextElement();
-    onChange({ ...doc, elements: [...doc.elements, el] });
+    commit({ ...doc, elements: [...doc.elements, el] });
     setSelectedId(el.id);
   }
 
   function addSticker(emoji: string) {
     const el = newStickerElement(emoji);
-    onChange({ ...doc, elements: [...doc.elements, el] });
+    commit({ ...doc, elements: [...doc.elements, el] });
     setSelectedId(el.id);
     setPickerOpen(false);
   }
@@ -85,13 +131,13 @@ export function StoryEditor({
   function duplicate(id: string) {
     const src = doc.elements.find((e) => e.id === id);
     if (!src) return;
-    const el: Element = { ...src, id: `${src.type}-${Date.now()}`, x: clamp(src.x + 0.05, 0, 1), y: clamp(src.y + 0.05, 0, 1) };
-    onChange({ ...doc, elements: [...doc.elements, el] });
+    const el: Element = { ...src, id: dupId(src.type), x: clamp(src.x + 0.05, 0, 1), y: clamp(src.y + 0.05, 0, 1) };
+    commit({ ...doc, elements: [...doc.elements, el] });
     setSelectedId(el.id);
   }
 
   function remove(id: string) {
-    onChange({ ...doc, elements: doc.elements.filter((e) => e.id !== id) });
+    commit({ ...doc, elements: doc.elements.filter((e) => e.id !== id) });
     if (selectedId === id) setSelectedId(null);
   }
 
@@ -101,7 +147,7 @@ export function StoryEditor({
     if (i < 0 || j < 0 || j >= doc.elements.length) return;
     const els = [...doc.elements];
     [els[i], els[j]] = [els[j], els[i]];
-    onChange({ ...doc, elements: els });
+    commit({ ...doc, elements: els });
   }
 
   function rect() {
@@ -142,10 +188,15 @@ export function StoryEditor({
     if (!g) return;
     const r = rect();
     if (g.kind === "move") {
-      update(g.id, {
-        x: clamp(g.ox + (e.clientX - g.sx) / r.width, 0, 1),
-        y: clamp(g.oy + (e.clientY - g.sy) / r.height, 0, 1),
-      });
+      let x = clamp(g.ox + (e.clientX - g.sx) / r.width, 0, 1);
+      let y = clamp(g.oy + (e.clientY - g.sy) / r.height, 0, 1);
+      // snap ao centro com guias (tipo Canva)
+      const v = Math.abs(x - 0.5) < 0.015;
+      const h = Math.abs(y - 0.5) < 0.015;
+      if (v) x = 0.5;
+      if (h) y = 0.5;
+      setGuides((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
+      update(g.id, { x, y });
     } else if (g.kind === "rotate") {
       const ang = Math.atan2(e.clientY - g.cy, e.clientX - g.cx) * (180 / Math.PI);
       let rot = g.base + (ang - g.start);
@@ -172,16 +223,30 @@ export function StoryEditor({
 
   function onPointerUp() {
     gesture.current = null;
+    if (guides.v || guides.h) setGuides({ v: false, h: false });
   }
 
   // Atalhos: Delete remove, setas movem (Shift = passo maior), Esc desmarca.
   // Ignora quando o foco está num campo (pra não atrapalhar digitação no painel).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!selectedId) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const inField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      // Undo/redo (funciona sem seleção; não sequestra digitação em campos).
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !inField) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y" && !inField) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (!selectedId) return;
+      if (inField) return;
       const el = doc.elements.find((x) => x.id === selectedId);
       if (!el) return;
       const step = e.shiftKey ? 0.05 : 0.01;
@@ -271,6 +336,10 @@ export function StoryEditor({
                 onRotate={(e) => onPointerDownRotate(e, el)}
                 onResize={(e) => onPointerDownResize(e, el)}
                 onDelete={() => remove(el.id)}
+                onEdit={() => {
+                  setSelectedId(el.id);
+                  setEditKey((k) => k + 1);
+                }}
               />
             ) : (
               <StickerLayer
@@ -284,6 +353,10 @@ export function StoryEditor({
               />
             ),
           )}
+
+          {/* guias de centro (aparecem ao arrastar perto do meio) */}
+          {guides.v && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-amber/80" />}
+          {guides.h && <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-amber/80" />}
         </div>
       </div>
 
@@ -320,6 +393,27 @@ export function StoryEditor({
           Camadas
         </p>
         <div className="relative flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={histLen.u === 0}
+            title="Desfazer (Ctrl+Z)"
+            aria-label="Desfazer"
+            className={`${btnCls} disabled:opacity-40`}
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={histLen.r === 0}
+            title="Refazer (Ctrl+Shift+Z)"
+            aria-label="Refazer"
+            className={`${btnCls} disabled:opacity-40`}
+          >
+            ↷
+          </button>
+          <span className="mx-1 w-px self-stretch bg-border" aria-hidden />
           <button type="button" onClick={addText} className={btnCls}>+ Texto</button>
           <button type="button" onClick={() => setPickerOpen((v) => !v)} className={btnCls}>+ Emoji</button>
           {selected && (
@@ -337,7 +431,7 @@ export function StoryEditor({
         </div>
 
         {selected?.type === "text" ? (
-          <ElementPanel el={selected} onChange={(p) => update(selected.id, p)} />
+          <ElementPanel el={selected} onChange={(p) => update(selected.id, p)} focusSignal={editKey} />
         ) : selected?.type === "sticker" ? (
           <StickerPanel el={selected} onChange={(p) => update(selected.id, p)} />
         ) : (
@@ -375,6 +469,7 @@ function TextLayer({
   onRotate,
   onResize,
   onDelete,
+  onEdit,
 }: {
   el: TextElement;
   selected: boolean;
@@ -382,6 +477,7 @@ function TextLayer({
   onRotate: (e: RPointerEvent) => void;
   onResize: (e: RPointerEvent) => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const scrimBg =
     el.scrim.enabled
@@ -390,6 +486,7 @@ function TextLayer({
   return (
     <div
       onPointerDown={onBody}
+      onDoubleClick={onEdit}
       style={{
         position: "absolute",
         left: `${el.x * 100}%`,
@@ -548,13 +645,24 @@ function StickerPanel({
 function ElementPanel({
   el,
   onChange,
+  focusSignal,
 }: {
   el: TextElement;
   onChange: (p: Partial<TextElement>) => void;
+  focusSignal: number;
 }) {
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  // Duplo-clique no texto (focusSignal muda) -> foca e seleciona pra editar já.
+  useEffect(() => {
+    if (focusSignal > 0) {
+      textRef.current?.focus();
+      textRef.current?.select();
+    }
+  }, [focusSignal]);
   return (
     <div className="space-y-3 rounded-xl border border-border bg-surface/30 p-4">
       <textarea
+        ref={textRef}
         value={el.text}
         onChange={(e) => onChange({ text: e.target.value })}
         rows={2}

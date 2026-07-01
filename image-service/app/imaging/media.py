@@ -10,6 +10,13 @@ import io
 
 from PIL import Image, ImageFilter, ImageOps
 
+try:  # habilita abrir HEIC/HEIF (iPhone). Ausente no dev local? degrada sem quebrar.
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+except Exception:  # noqa: BLE001
+    pass
+
 from app.imaging.document import Photo, StoryDoc
 from app.imaging.style import StyleConfig
 from app.imaging.text_overlay import overlay_text, render_document
@@ -63,6 +70,20 @@ def build_story_image(
     elif caption:
         background = overlay_text(background, caption, style)
     return background
+
+
+PREVIEW_MAX = 1440  # lado maior do preview web (leve pro browser)
+
+
+def normalize_for_web(data: bytes) -> bytes:
+    """Converte qualquer imagem (inclusive HEIC) num JPEG reduzido, já com a
+    orientação EXIF aplicada — pro editor exibir a foto no browser."""
+    with Image.open(io.BytesIO(data)) as raw:
+        img = ImageOps.exif_transpose(raw).convert("RGB")
+    img.thumbnail((PREVIEW_MAX, PREVIEW_MAX), Image.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=85)
+    return out.getvalue()
 
 
 def process_image_bytes(
