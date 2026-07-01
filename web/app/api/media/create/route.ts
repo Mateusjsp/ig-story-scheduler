@@ -13,24 +13,35 @@ export async function POST(request: NextRequest) {
   const file = form.get("file");
   const caption = (form.get("caption") as string) || null;
   const accountId = form.get("account_id") as string;
-  const scheduledAt = form.get("scheduled_at") as string;
+  const scheduledAt = form.get("scheduled_at") as string | null;
+  // "Postar agora": enfileira com scheduled_at = agora; o scheduler publica no
+  // próximo ciclo (~1 min), reusando o mesmo caminho atômico do agendamento.
+  const immediate = form.get("now") === "1";
 
-  if (!(file instanceof Blob) || !accountId || !scheduledAt) {
+  if (!(file instanceof Blob) || !accountId) {
     return NextResponse.json({ error: "dados incompletos" }, { status: 400 });
   }
 
-  const scheduledDate = new Date(scheduledAt);
-  if (Number.isNaN(scheduledDate.getTime())) {
-    return NextResponse.json(
-      { error: "data de agendamento inválida" },
-      { status: 400 },
-    );
-  }
-  if (scheduledDate.getTime() <= Date.now()) {
-    return NextResponse.json(
-      { error: "o horário precisa ser no futuro" },
-      { status: 400 },
-    );
+  let scheduledDate: Date;
+  if (immediate) {
+    scheduledDate = new Date();
+  } else {
+    if (!scheduledAt) {
+      return NextResponse.json({ error: "dados incompletos" }, { status: 400 });
+    }
+    scheduledDate = new Date(scheduledAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      return NextResponse.json(
+        { error: "data de agendamento inválida" },
+        { status: 400 },
+      );
+    }
+    if (scheduledDate.getTime() <= Date.now()) {
+      return NextResponse.json(
+        { error: "o horário precisa ser no futuro" },
+        { status: 400 },
+      );
+    }
   }
 
   const base = process.env.IMAGE_SERVICE_URL;
@@ -41,11 +52,22 @@ export async function POST(request: NextRequest) {
   fd.append("owner", user.id);
   fd.append("file", file);
   if (caption) fd.append("caption", caption);
-  const procRes = await fetch(`${base}/process`, {
-    method: "POST",
-    body: fd,
-    headers: { "X-Service-Token": process.env.SERVICE_SHARED_SECRET ?? "" },
-  });
+  let procRes: Response;
+  try {
+    procRes = await fetch(`${base}/process`, {
+      method: "POST",
+      body: fd,
+      headers: { "X-Service-Token": process.env.SERVICE_SHARED_SECRET ?? "" },
+      // evita spinner infinito se o image-service estiver lento/inalcançável
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    const reason = e instanceof Error && e.name === "TimeoutError" ? "tempo esgotado" : "sem resposta";
+    return NextResponse.json(
+      { error: `image-service indisponível (${reason})` },
+      { status: 504 },
+    );
+  }
   if (!procRes.ok) {
     return NextResponse.json(
       { error: `tratamento falhou: ${await procRes.text()}` },
@@ -81,5 +103,5 @@ export async function POST(request: NextRequest) {
   });
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 400 });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, immediate });
 }

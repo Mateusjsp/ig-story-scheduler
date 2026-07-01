@@ -13,9 +13,9 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState<"preview" | "schedule" | null>(null);
+  const [loading, setLoading] = useState<"preview" | "schedule" | "now" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<"schedule" | "now" | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function runPreview() {
@@ -40,19 +40,22 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
     }
   }
 
-  async function schedule() {
-    if (!file || !accountId || !when) return;
-    setLoading("schedule");
+  async function submit(immediate: boolean) {
+    if (!file || !accountId || (!immediate && !when)) return;
+    setLoading(immediate ? "now" : "schedule");
     setError(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("account_id", accountId);
-      fd.append("scheduled_at", when);
+      if (immediate) fd.append("now", "1");
+      // `when` vem do datetime-local (horário local, sem fuso). Converte pra ISO
+      // (UTC) aqui no browser pra o server comparar o instante certo.
+      else fd.append("scheduled_at", new Date(when).toISOString());
       if (caption.trim()) fd.append("caption", caption.trim());
       const res = await fetch("/api/media/create", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "falha");
-      setDone(true);
+      setDone(immediate ? "now" : "schedule");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "erro");
@@ -79,7 +82,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           hidden
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);
-            setDone(false);
+            setDone(null);
           }}
         />
 
@@ -123,8 +126,16 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           >
             {loading === "preview" ? "revelando…" : "Preview"}
           </button>
+          <button
+            type="button"
+            onClick={() => submit(true)}
+            disabled={!file || loading !== null}
+            className="rounded-md border border-amber px-4 py-2 text-sm font-medium text-amber transition-colors hover:bg-amber hover:text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
+          >
+            {loading === "now" ? "publicando…" : "Postar agora"}
+          </button>
           <PrimaryButton
-            onClick={schedule}
+            onClick={() => submit(false)}
             disabled={!file || !when || loading !== null}
           >
             {loading === "schedule" ? "agendando…" : "Agendar"}
@@ -132,7 +143,14 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         </div>
 
         <div aria-live="polite">
-          {done && <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>}
+          {done === "now" && (
+            <p className="text-sm text-green">
+              Na fila ✓ — publica em instantes. Acompanhe em Agenda.
+            </p>
+          )}
+          {done === "schedule" && (
+            <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>
+          )}
           {error && <p className="text-sm text-red">{error}</p>}
         </div>
       </div>
