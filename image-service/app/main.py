@@ -32,7 +32,7 @@ from app.imaging.media import STORY_SIZE, process_image_bytes
 from app.imaging.style import StyleConfig
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
-from app.storage import upload_processed
+from app.storage import download, remove, upload_original, upload_processed
 
 settings = get_settings()
 
@@ -102,10 +102,7 @@ def _parse_style(style: str | None) -> StyleConfig:
         raise HTTPException(status_code=400, detail=f"Style inválido: {exc}")
 
 
-async def _read_and_process(
-    file: UploadFile, caption: str | None, style: StyleConfig
-) -> bytes:
-    data = await file.read()
+def _process_or_400(data: bytes, caption: str | None, style: StyleConfig) -> bytes:
     if not data:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
     if len(data) > MAX_UPLOAD_BYTES:
@@ -123,7 +120,7 @@ async def preview(
     style: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> Response:
-    out = await _read_and_process(file, caption, _parse_style(style))
+    out = _process_or_400(await file.read(), caption, _parse_style(style))
     return Response(content=out, media_type="image/jpeg")
 
 
@@ -135,12 +132,55 @@ async def process(
     style: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
-    """Trata a imagem, grava no Storage e retorna a URL pública (image_url)."""
-    out = await _read_and_process(file, caption, _parse_style(style))
+    """Trata a imagem, grava o tratado + o original no Storage e retorna as URLs.
+
+    O original é guardado pra permitir reprocessar (editar legenda/estilo) sem o
+    usuário reenviar a foto — ver /reprocess.
+    """
+    raw = await file.read()
+    out = _process_or_400(raw, caption, _parse_style(style))
+    try:
+        path, url = upload_processed(owner, out)
+        orig_path, orig_url = upload_original(
+            owner, raw, file.content_type or "application/octet-stream"
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha no Storage: {exc}")
+    return {
+        "processed_path": path,
+        "processed_url": url,
+        "original_path": orig_path,
+        "original_url": orig_url,
+        "width": STORY_SIZE[0],
+        "height": STORY_SIZE[1],
+    }
+
+
+@app.post("/reprocess")
+async def reprocess(
+    owner: str = Form(...),
+    original_path: str = Form(...),
+    caption: str | None = Form(default=None),
+    style: str | None = Form(default=None),
+    old_processed_path: str | None = Form(default=None),
+    _: None = Depends(require_service_token),
+) -> dict:
+    """Reprocessa a partir do original guardado (edição de legenda/estilo).
+
+    Baixa o original do Storage, aplica caption+style de novo, sobe um novo
+    tratado e devolve a URL. O tratado antigo é apagado (best-effort).
+    """
+    try:
+        raw = download(original_path)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Original indisponível: {exc}")
+    out = _process_or_400(raw, caption, _parse_style(style))
     try:
         path, url = upload_processed(owner, out)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no Storage: {exc}")
+    if old_processed_path:
+        remove(old_processed_path)
     return {
         "processed_path": path,
         "processed_url": url,

@@ -87,6 +87,10 @@ export async function POST(request: NextRequest) {
       owner: user.id,
       account_id: accountId,
       caption,
+      // style guardado pra permitir editar depois (reprocessar). null = 'classic'.
+      style: style ? JSON.parse(style) : null,
+      original_path: processed.original_path,
+      original_url: processed.original_url,
       processed_path: processed.processed_path,
       processed_url: processed.processed_url,
       width: processed.width,
