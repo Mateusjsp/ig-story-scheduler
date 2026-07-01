@@ -40,6 +40,17 @@ FONT_CANDIDATES: dict[str, list[str]] = {
 FontKey = Literal["sans-bold", "serif", "condensed", "mono"]
 Position = Literal["auto", "top", "center", "bottom"]
 
+
+def resolve_font_path(font: str) -> str | None:
+    """Primeiro caminho de fonte existente pra chave (ou None). Usado pra servir a
+    TTF ao editor web, garantindo que o preview use a mesma fonte do render."""
+    import os
+
+    for path in FONT_CANDIDATES.get(font, []):
+        if os.path.isfile(path):
+            return path
+    return None
+
 _HEX = "#0123456789abcdefABCDEF"
 
 

@@ -20,6 +20,8 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from app.imaging.document import StickerElement, StoryDoc, TextElement
+from app.imaging.emoji import emoji_image
 from app.imaging.style import StyleConfig, hex_to_rgb
 
 # Zona segura do Story (frações da altura): topo/rodapé são cobertos pela UI.
@@ -244,3 +246,113 @@ def overlay_text(
         ty += line_h + gap
 
     return img
+
+
+# ───────────────────── render por documento (camadas) ─────────────────────
+
+def _adaptive_alpha(base: Image.Image, cx: int, cy: int, w: int, h: int) -> int:
+    """Opacidade do scrim pela luminância local sob o elemento (fundo claro = +forte)."""
+    box = (
+        max(0, cx - w // 2),
+        max(0, cy - h // 2),
+        min(base.width, cx + w // 2),
+        min(base.height, cy + h // 2),
+    )
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return 130
+    luma = float(np.asarray(base.crop(box).convert("L")).mean())
+    return 160 if luma > 130 else 110
+
+
+def _render_text_element(base: Image.Image, el: TextElement) -> None:
+    """Desenha um elemento de texto (com scrim/outline/rotação) sobre `base` (RGB)."""
+    text = (el.text or "").strip()
+    if not text:
+        return
+    W, H = base.size
+    size = max(MIN_FONT_SIZE, int(el.size_factor * W))
+    font = _load_font(el.font_candidates(), size)
+
+    measure = ImageDraw.Draw(base)
+    max_w = max(1.0, el.w * W)
+    lines = _wrap_lines(measure, text, font, max_w)
+    asc, desc = font.getmetrics()
+    line_h = asc + desc
+    gap = int(line_h * 0.2)
+    block_w = max(measure.textlength(ln, font=font) for ln in lines)
+    block_h = len(lines) * line_h + (len(lines) - 1) * gap
+
+    text_rgb = hex_to_rgb(el.color)
+    stroke_w = el.outline.width if el.outline.enabled else 0
+    stroke_rgb = hex_to_rgb(el.outline.color)
+
+    pad = int(size * 0.4)
+    lw = int(block_w + 2 * pad)
+    lh = int(block_h + 2 * pad)
+    layer = Image.new("RGBA", (lw, lh), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+
+    cx, cy = int(el.x * W), int(el.y * H)
+    if el.scrim.enabled:
+        scrim_rgb = hex_to_rgb(el.scrim.color)
+        alpha = (
+            _adaptive_alpha(base, cx, cy, lw, lh)
+            if el.scrim.adaptive
+            else el.scrim.opacity
+        )
+        ld.rounded_rectangle(
+            [2, 2, lw - 2, lh - 2], radius=int(size * 0.35), fill=(*scrim_rgb, alpha)
+        )
+
+    ty = pad
+    for line in lines:
+        tw = measure.textlength(line, font=font)
+        if el.align == "left":
+            tx = pad
+        elif el.align == "right":
+            tx = pad + (block_w - tw)
+        else:
+            tx = pad + (block_w - tw) / 2.0
+        ld.text(
+            (tx, ty),
+            line,
+            font=font,
+            fill=(*text_rgb, 255),
+            stroke_width=stroke_w,
+            stroke_fill=(*stroke_rgb, 255),
+        )
+        ty += line_h + gap
+
+    # rotação: negativa pra bater com CSS (positivo = horário). expand mantém tudo.
+    if el.rotation:
+        layer = layer.rotate(-el.rotation, expand=True, resample=Image.BICUBIC)
+
+    px = cx - layer.width // 2
+    py = cy - layer.height // 2
+    base.paste(layer, (px, py), layer)
+
+
+def _render_sticker_element(base: Image.Image, el: StickerElement) -> None:
+    """Cola um emoji (PNG Noto) como sticker: escala pra `w`, rotaciona, centra."""
+    im = emoji_image(el.emoji)
+    if im is None:
+        return
+    W, H = base.size
+    target_w = max(1, int(el.w * W))
+    scale = target_w / im.width
+    im = im.resize((target_w, max(1, int(im.height * scale))), Image.LANCZOS)
+    if el.rotation:
+        im = im.rotate(-el.rotation, expand=True, resample=Image.BICUBIC)
+    cx, cy = int(el.x * W), int(el.y * H)
+    base.paste(im, (cx - im.width // 2, cy - im.height // 2), im)
+
+
+def render_document(img: Image.Image, doc: StoryDoc) -> Image.Image:
+    """Desenha todos os elementos do doc, em ordem, sobre a imagem (RGB)."""
+    out = img.convert("RGB")
+    for el in doc.elements:
+        if isinstance(el, TextElement):
+            _render_text_element(out, el)
+        elif isinstance(el, StickerElement):
+            _render_sticker_element(out, el)
+    return out

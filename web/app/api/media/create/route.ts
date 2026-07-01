@@ -1,5 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { docCaption, type StoryDoc } from "@/lib/story-doc";
+
+// Texto concatenado dos elementos do doc (guardado em media.caption).
+function deriveCaption(docRaw: string): string | null {
+  try {
+    return docCaption(JSON.parse(docRaw) as StoryDoc) || null;
+  } catch {
+    return null;
+  }
+}
 
 // Trata a imagem (image-service /process -> URL pública) e cria media + post agendado.
 export async function POST(request: NextRequest) {
@@ -11,9 +21,10 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const file = form.get("file");
+  // `doc` = documento de camadas do editor (JSON). Tem precedência sobre caption.
+  const docRaw = (form.get("doc") as string) || null;
   const caption = (form.get("caption") as string) || null;
-  // `style` é o JSON do preset resolvido no front. Repassado como está pro
-  // image-service, que valida (Pydantic). Ausente = visual 'classic'.
+  // `style` é o JSON do preset resolvido no front (caminho legado single-caption).
   const style = (form.get("style") as string) || null;
   const accountId = form.get("account_id") as string;
   const scheduledAt = form.get("scheduled_at") as string | null;
@@ -54,6 +65,7 @@ export async function POST(request: NextRequest) {
   const fd = new FormData();
   fd.append("owner", user.id);
   fd.append("file", file);
+  if (docRaw) fd.append("doc", docRaw);
   if (caption) fd.append("caption", caption);
   if (style) fd.append("style", style);
   let procRes: Response;
@@ -86,7 +98,9 @@ export async function POST(request: NextRequest) {
     .insert({
       owner: user.id,
       account_id: accountId,
-      caption,
+      // com doc, a legenda guardada é o texto concatenado dos elementos.
+      caption: docRaw ? deriveCaption(docRaw) : caption,
+      doc: docRaw ? JSON.parse(docRaw) : null,
       // style guardado pra permitir editar depois (reprocessar). null = 'classic'.
       style: style ? JSON.parse(style) : null,
       original_path: processed.original_path,

@@ -27,9 +27,11 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
+from app.imaging.document import StoryDoc
 from app.imaging.media import STORY_SIZE, process_image_bytes
-from app.imaging.style import StyleConfig
+from app.imaging.style import StyleConfig, resolve_font_path
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
 from app.storage import download, remove, upload_original, upload_processed
@@ -75,6 +77,21 @@ def health() -> dict:
     return {"status": "ok", "service": "image-service", "version": app.version}
 
 
+@app.get("/fonts/{key}")
+def font_file(key: str) -> FileResponse:
+    """Serve a TTF de uma chave de fonte pro editor web (@font-face). Público:
+    fonte não é segredo, e assim o preview no browser usa a mesma fonte do render.
+    """
+    path = resolve_font_path(key)
+    if not path:
+        raise HTTPException(status_code=404, detail="Fonte não encontrada.")
+    return FileResponse(
+        path,
+        media_type="font/ttf",
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
+
+
 @app.post("/run-due")
 def run_due(
     background_tasks: BackgroundTasks,
@@ -102,13 +119,23 @@ def _parse_style(style: str | None) -> StyleConfig:
         raise HTTPException(status_code=400, detail=f"Style inválido: {exc}")
 
 
-def _process_or_400(data: bytes, caption: str | None, style: StyleConfig) -> bytes:
+def _parse_doc(doc: str | None) -> StoryDoc | None:
+    """JSON do documento de camadas -> StoryDoc. Ausente -> None (caminho legado)."""
+    try:
+        return StoryDoc.parse(doc)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Documento inválido: {exc}")
+
+
+def _process_or_400(
+    data: bytes, caption: str | None, style: StyleConfig, doc: StoryDoc | None
+) -> bytes:
     if not data:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Imagem maior que 25 MB.")
     try:
-        return process_image_bytes(data, (caption or "").strip() or None, style)
+        return process_image_bytes(data, (caption or "").strip() or None, style, doc)
     except Exception as exc:  # imagem inválida, formato não suportado, etc.
         raise HTTPException(status_code=400, detail=f"Falha ao processar: {exc}")
 
@@ -118,9 +145,10 @@ async def preview(
     file: UploadFile = File(...),
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
+    doc: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> Response:
-    out = _process_or_400(await file.read(), caption, _parse_style(style))
+    out = _process_or_400(await file.read(), caption, _parse_style(style), _parse_doc(doc))
     return Response(content=out, media_type="image/jpeg")
 
 
@@ -130,6 +158,7 @@ async def process(
     file: UploadFile = File(...),
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
+    doc: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
     """Trata a imagem, grava o tratado + o original no Storage e retorna as URLs.
@@ -138,7 +167,7 @@ async def process(
     usuário reenviar a foto — ver /reprocess.
     """
     raw = await file.read()
-    out = _process_or_400(raw, caption, _parse_style(style))
+    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc))
     try:
         path, url = upload_processed(owner, out)
         orig_path, orig_url = upload_original(
@@ -162,19 +191,20 @@ async def reprocess(
     original_path: str = Form(...),
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
+    doc: str | None = Form(default=None),
     old_processed_path: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
-    """Reprocessa a partir do original guardado (edição de legenda/estilo).
+    """Reprocessa a partir do original guardado (edição de texto/estilo).
 
-    Baixa o original do Storage, aplica caption+style de novo, sobe um novo
-    tratado e devolve a URL. O tratado antigo é apagado (best-effort).
+    Baixa o original do Storage, aplica doc (ou caption+style) de novo, sobe um
+    novo tratado e devolve a URL. O tratado antigo é apagado (best-effort).
     """
     try:
         raw = download(original_path)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Original indisponível: {exc}")
-    out = _process_or_400(raw, caption, _parse_style(style))
+    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc))
     try:
         path, url = upload_processed(owner, out)
     except Exception as exc:

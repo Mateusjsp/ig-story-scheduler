@@ -15,8 +15,9 @@ export default async function MediaPage() {
     <>
       <PageHeader eyebrow="● mídia" title="Estúdio" />
       <p className="mb-6 max-w-xl text-sm text-text-dim">
-        Suba uma foto e escreva a legenda. O preview mostra o tratamento: 9:16 com
-        fundo desfocado e o texto no ponto mais calmo da imagem, desviando de rostos.
+        Suba uma foto e monte o Story: 9:16 com fundo desfocado. Adicione textos,
+        arraste pra posicionar, gire e redimensione. &ldquo;Ver render real&rdquo;
+        confirma como sai publicado.
       </p>
 
       {accounts && accounts.length > 0 ? (

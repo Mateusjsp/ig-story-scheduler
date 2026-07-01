@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStyle, validateStyle, type StyleConfig } from "@/lib/presets";
+import { docCaption, type StoryDoc } from "@/lib/story-doc";
 
 // PUT    /api/schedule/:id  -> edita um post da fila (reagenda, troca conta,
-//                             edita legenda/estilo reprocessando, reenfileira)
+//                             edita texto/estilo reprocessando, reenfileira)
 // DELETE /api/schedule/:id  -> cancela (apaga o post e a mídia)
 // Só posts editáveis: status 'queued' ou 'failed'. RLS isola por owner.
 
@@ -13,6 +14,7 @@ type MediaRow = {
   id: string;
   caption: string | null;
   style: StyleConfig | null;
+  doc: StoryDoc | null;
   original_path: string | null;
   processed_path: string | null;
 };
@@ -33,7 +35,7 @@ export async function PUT(
 
   const { data: post, error: pErr } = await supabase
     .from("posts")
-    .select("id, status, account_id, media_id, media:media_id(id, caption, style, original_path, processed_path)")
+    .select("id, status, account_id, media_id, media:media_id(id, caption, style, doc, original_path, processed_path)")
     .eq("id", id)
     .single();
   if (pErr || !post) return NextResponse.json({ error: "post não encontrado" }, { status: 404 });
@@ -45,7 +47,10 @@ export async function PUT(
   }
   const media = (Array.isArray(post.media) ? post.media[0] : post.media) as MediaRow;
 
-  // ---- reprocesso (legenda/estilo) ----
+  // ---- reprocesso: doc (editor de camadas) tem precedência sobre caption/style ----
+  const docChanged =
+    body.doc !== undefined &&
+    JSON.stringify(body.doc) !== JSON.stringify(media.doc);
   const captionChanged =
     typeof body.caption === "string" && body.caption !== (media.caption ?? "");
   const styleChanged =
@@ -53,27 +58,38 @@ export async function PUT(
     JSON.stringify(normalizeStyle(body.style)) !==
       JSON.stringify(normalizeStyle(media.style));
 
-  if (captionChanged || styleChanged) {
+  if (docChanged || captionChanged || styleChanged) {
     if (!media.original_path) {
       return NextResponse.json(
         { error: "esse post não tem a foto original salva — reenvie pela tela de Mídia" },
         { status: 422 },
       );
     }
-    const newCaption = captionChanged ? (body.caption as string) : media.caption ?? "";
-    const newStyle = normalizeStyle(styleChanged ? body.style : media.style);
-    const invalid = validateStyle(newStyle);
-    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
-
     const base = process.env.IMAGE_SERVICE_URL;
     if (!base) return NextResponse.json({ error: "IMAGE_SERVICE_URL ausente" }, { status: 500 });
 
     const fd = new FormData();
     fd.append("owner", user.id);
     fd.append("original_path", media.original_path);
-    if (newCaption.trim()) fd.append("caption", newCaption.trim());
-    fd.append("style", JSON.stringify(newStyle));
     if (media.processed_path) fd.append("old_processed_path", media.processed_path);
+
+    const mediaPatch: Record<string, unknown> = {};
+    if (docChanged) {
+      const doc = body.doc as StoryDoc;
+      fd.append("doc", JSON.stringify(doc));
+      mediaPatch.doc = doc;
+      mediaPatch.caption = docCaption(doc) || null;
+    } else {
+      // legado single-caption
+      const newCaption = captionChanged ? (body.caption as string) : media.caption ?? "";
+      const newStyle = normalizeStyle(styleChanged ? body.style : media.style);
+      const invalid = validateStyle(newStyle);
+      if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
+      if (newCaption.trim()) fd.append("caption", newCaption.trim());
+      fd.append("style", JSON.stringify(newStyle));
+      mediaPatch.caption = newCaption || null;
+      mediaPatch.style = newStyle;
+    }
 
     let res: Response;
     try {
@@ -93,15 +109,9 @@ export async function PUT(
       );
     }
     const rp = await res.json();
-    const { error: mErr } = await supabase
-      .from("media")
-      .update({
-        caption: newCaption || null,
-        style: newStyle,
-        processed_path: rp.processed_path,
-        processed_url: rp.processed_url,
-      })
-      .eq("id", media.id);
+    mediaPatch.processed_path = rp.processed_path;
+    mediaPatch.processed_url = rp.processed_url;
+    const { error: mErr } = await supabase.from("media").update(mediaPatch).eq("id", media.id);
     if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
   }
 

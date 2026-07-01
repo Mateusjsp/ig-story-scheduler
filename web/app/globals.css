@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Fontes do editor de Story — servidas pelo image-service (mesma TTF do render),
+   pra o preview no browser bater com a imagem publicada. */
+@font-face {
+  font-family: "story-sans-bold";
+  src: url("/fonts/sans-bold") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "story-serif";
+  src: url("/fonts/serif") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "story-condensed";
+  src: url("/fonts/condensed") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "story-mono";
+  src: url("/fonts/mono") format("truetype");
+  font-display: swap;
+}
+
 /* ============================================================
    Darkroom — sistema visual (câmara escura de revelação)
    Base carvão quente, acento âmbar de "safelight", grão de filme.

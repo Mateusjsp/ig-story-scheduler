@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui";
-import { normalizeStyle, type StyleConfig } from "@/lib/presets";
+import { docFromLegacy, type StoryDoc } from "@/lib/story-doc";
+import { type StyleConfig } from "@/lib/presets";
 import { PostEditor } from "./post-editor";
 
 export default async function PostDetailPage({
@@ -16,7 +17,7 @@ export default async function PostDetailPage({
   const { data: post } = await supabase
     .from("posts")
     .select(
-      "id, scheduled_at, status, account_id, error, media:media_id(caption, style, processed_url, original_path)",
+      "id, scheduled_at, status, account_id, error, media:media_id(caption, style, doc, processed_url, original_url, original_path)",
     )
     .eq("id", id)
     .single();
@@ -31,9 +32,13 @@ export default async function PostDetailPage({
   const media = (Array.isArray(post.media) ? post.media[0] : post.media) as {
     caption: string | null;
     style: StyleConfig | null;
+    doc: StoryDoc | null;
     processed_url: string | null;
+    original_url: string | null;
     original_path: string | null;
   } | null;
+
+  const initialDoc = media?.doc ?? docFromLegacy(media?.caption, media?.style);
 
   return (
     <>
@@ -51,9 +56,8 @@ export default async function PostDetailPage({
           status: post.status,
           account_id: post.account_id,
           error: post.error,
-          caption: media?.caption ?? "",
-          style: normalizeStyle(media?.style),
-          processed_url: media?.processed_url ?? null,
+          doc: initialDoc,
+          bg_url: media?.original_url ?? media?.processed_url ?? null,
           has_original: !!media?.original_path,
         }}
         accounts={(accounts ?? []).map((a) => ({

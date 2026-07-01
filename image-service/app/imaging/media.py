@@ -10,8 +10,9 @@ import io
 
 from PIL import Image, ImageFilter, ImageOps
 
+from app.imaging.document import StoryDoc
 from app.imaging.style import StyleConfig
-from app.imaging.text_overlay import overlay_text
+from app.imaging.text_overlay import overlay_text, render_document
 
 STORY_SIZE = (1080, 1920)  # largura x altura, 9:16
 MAX_BYTES = 8 * 1024 * 1024  # 8 MB (limite da API para imagem)
@@ -34,12 +35,13 @@ def build_story_image(
     img: Image.Image,
     caption: str | None = None,
     style: StyleConfig | None = None,
+    doc: StoryDoc | None = None,
 ) -> Image.Image:
-    """Normaliza pro padrão Story 1080x1920 com fundo blur e (opcional) legenda.
+    """Normaliza pro padrão Story 1080x1920 com fundo blur e (opcional) texto.
 
     Fundo = a própria foto ampliada+borrada (preenche a tela). Foto original
-    nítida e inteira no centro (sem corte). Se `caption`, desenha o texto com o
-    `style` do preset (ver text_overlay); `style=None` = visual 'classic'.
+    nítida e inteira no centro (sem corte). Precedência do texto: `doc` (editor de
+    camadas) > `caption`+`style` (legado, placement automático).
     """
     img = img.convert("RGB")
     background = _cover(img, STORY_SIZE).filter(ImageFilter.GaussianBlur(BLUR_RADIUS))
@@ -50,7 +52,9 @@ def build_story_image(
     y = (STORY_SIZE[1] - foreground.height) // 2
     background.paste(foreground, (x, y))
 
-    if caption:
+    if doc is not None and doc.elements:
+        background = render_document(background, doc)
+    elif caption:
         background = overlay_text(background, caption, style)
     return background
 
@@ -59,13 +63,14 @@ def process_image_bytes(
     data: bytes,
     caption: str | None = None,
     style: StyleConfig | None = None,
+    doc: StoryDoc | None = None,
 ) -> bytes:
     """Recebe bytes de uma imagem, devolve JPEG 1080x1920 pronto pro Story."""
     with Image.open(io.BytesIO(data)) as raw:
         # Câmeras de celular gravam a foto no sensor + tag EXIF Orientation.
         # exif_transpose aplica a rotação nos pixels (senão sai deitada).
         img = ImageOps.exif_transpose(raw).convert("RGB")
-    story = build_story_image(img, caption, style)
+    story = build_story_image(img, caption, style, doc)
     out = io.BytesIO()
     story.save(out, "JPEG", quality=JPEG_QUALITY)
     return out.getvalue()
