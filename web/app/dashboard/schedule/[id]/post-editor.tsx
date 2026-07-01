@@ -97,38 +97,45 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
         </p>
       )}
 
-      <StoryEditor doc={doc} onChange={setDoc} bgSrc={post.bg_url} />
+      <StoryEditor
+        doc={doc}
+        onChange={setDoc}
+        bgSrc={post.bg_url}
+        footer={
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Conta" className={inputCls}>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id} className="bg-bg-raised">{a.label}</option>
+                ))}
+              </select>
+              <input
+                type="datetime-local"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                aria-label={isFailed ? "Reagendar para" : "Agendar para"}
+                className={inputCls}
+              />
+            </div>
 
-      <div className="grid max-w-xl grid-cols-2 gap-3">
-        <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Conta" className={inputCls}>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id} className="bg-bg-raised">{a.label}</option>
-          ))}
-        </select>
-        <input
-          type="datetime-local"
-          value={when}
-          onChange={(e) => setWhen(e.target.value)}
-          aria-label={isFailed ? "Reagendar para" : "Agendar para"}
-          className={inputCls}
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <PrimaryButton onClick={save} disabled={busy !== null}>
-          {busy === "save" ? "salvando…" : isFailed ? "Salvar e reenfileirar" : "Salvar"}
-        </PrimaryButton>
-        <button
-          type="button"
-          onClick={cancel}
-          disabled={busy !== null}
-          className="rounded-md border border-border px-4 py-2 text-sm text-text-dim transition-colors hover:border-red hover:text-red disabled:opacity-50"
-        >
-          {busy === "delete" ? "cancelando…" : "Cancelar post"}
-        </button>
-        {ok && <span className="text-sm text-green">Salvo ✓</span>}
-        {error && <span className="text-sm text-red">{error}</span>}
-      </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <PrimaryButton onClick={save} disabled={busy !== null}>
+                {busy === "save" ? "salvando…" : isFailed ? "Salvar e reenfileirar" : "Salvar"}
+              </PrimaryButton>
+              <button
+                type="button"
+                onClick={cancel}
+                disabled={busy !== null}
+                className="rounded-md border border-border px-3 py-2 text-sm text-text-dim transition-colors hover:border-red hover:text-red disabled:opacity-50"
+              >
+                {busy === "delete" ? "cancelando…" : "Cancelar post"}
+              </button>
+              {ok && <span className="text-sm text-green">Salvo ✓</span>}
+              {error && <span className="text-sm text-red">{error}</span>}
+            </div>
+          </>
+        }
+      />
     </div>
   );
 }

@@ -32,10 +32,12 @@ export function StoryEditor({
   doc,
   onChange,
   bgSrc,
+  footer,
 }: {
   doc: StoryDoc;
   onChange: (d: StoryDoc) => void;
   bgSrc: string | null;
+  footer?: React.ReactNode;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -145,32 +147,16 @@ export function StoryEditor({
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6">
-      <div className="space-y-3">
-        <div className="relative flex flex-wrap gap-2">
-          <button type="button" onClick={addText} className={btnCls}>+ Texto</button>
-          <button type="button" onClick={() => setPickerOpen((v) => !v)} className={btnCls}>+ Emoji</button>
-          {selected && (
-            <>
-              <button type="button" onClick={() => duplicate(selected.id)} className={btnCls}>Duplicar</button>
-              <button type="button" onClick={() => reorder(selected.id, 1)} className={btnCls}>Frente</button>
-              <button type="button" onClick={() => reorder(selected.id, -1)} className={btnCls}>Trás</button>
-            </>
-          )}
-          {pickerOpen && (
-            <div className="absolute left-0 top-9 z-20">
-              <EmojiPicker onPick={addSticker} onClose={() => setPickerOpen(false)} />
-            </div>
-          )}
-        </div>
-
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* palco: foto grande, ocupa a altura da tela */}
+      <div className="flex justify-center">
         <div
           ref={stageRef}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerDown={() => setSelectedId(null)}
           style={{ containerType: "inline-size" }}
-          className="relative mx-auto aspect-[9/16] w-full max-w-[360px] touch-none select-none overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl"
+          className="relative aspect-[9/16] h-[74vh] max-h-[820px] max-w-full touch-none select-none overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl"
         >
           {/* fundo blur-fill aproximado (bate com o server: cover borrado + contain nítido) */}
           {bgSrc && (
@@ -213,19 +199,38 @@ export function StoryEditor({
         </div>
       </div>
 
-      {/* painel do elemento selecionado */}
+      {/* coluna de controles: ferramentas + propriedades + ajustes do post */}
       <div className="space-y-4">
+        <div className="relative flex flex-wrap gap-2">
+          <button type="button" onClick={addText} className={btnCls}>+ Texto</button>
+          <button type="button" onClick={() => setPickerOpen((v) => !v)} className={btnCls}>+ Emoji</button>
+          {selected && (
+            <>
+              <button type="button" onClick={() => duplicate(selected.id)} className={btnCls}>Duplicar</button>
+              <button type="button" onClick={() => reorder(selected.id, 1)} className={btnCls}>Frente</button>
+              <button type="button" onClick={() => reorder(selected.id, -1)} className={btnCls}>Trás</button>
+            </>
+          )}
+          {pickerOpen && (
+            <div className="absolute left-0 top-9 z-20">
+              <EmojiPicker onPick={addSticker} onClose={() => setPickerOpen(false)} />
+            </div>
+          )}
+        </div>
+
         {selected?.type === "text" ? (
           <ElementPanel el={selected} onChange={(p) => update(selected.id, p)} />
         ) : selected?.type === "sticker" ? (
           <StickerPanel el={selected} onChange={(p) => update(selected.id, p)} />
         ) : (
-          <p className="text-sm text-text-faint">
+          <p className="rounded-xl border border-dashed border-border p-4 text-sm text-text-faint">
             Toque em <span className="text-amber">+ Texto</span> ou{" "}
             <span className="text-amber">+ Emoji</span>. Arraste na foto pra posicionar,
             use as alças pra girar e redimensionar.
           </p>
         )}
+
+        {footer && <div className="space-y-4 border-t border-border pt-4">{footer}</div>}
       </div>
     </div>
   );

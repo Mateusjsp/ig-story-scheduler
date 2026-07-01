@@ -94,70 +94,77 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
           hidden
           onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
         />
-        <span className="text-xs text-text-faint">arraste os textos na foto pra posicionar</span>
+        <span className="text-xs text-text-faint">arraste os textos e emojis na foto pra posicionar</span>
       </div>
 
-      <StoryEditor doc={doc} onChange={setDoc} bgSrc={bgUrl} />
+      <StoryEditor
+        doc={doc}
+        onChange={setDoc}
+        bgSrc={bgUrl}
+        footer={
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                aria-label="Conta"
+                className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm text-text focus:border-amber focus:outline-none"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id} className="bg-bg-raised">{a.label}</option>
+                ))}
+              </select>
+              <input
+                type="datetime-local"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                aria-label="Agendar para"
+                className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm focus:border-amber focus:outline-none"
+              />
+            </div>
 
-      <div className="grid max-w-xl grid-cols-2 gap-3">
-        <select
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          aria-label="Conta"
-          className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm text-text focus:border-amber focus:outline-none"
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id} className="bg-bg-raised">{a.label}</option>
-          ))}
-        </select>
-        <input
-          type="datetime-local"
-          value={when}
-          onChange={(e) => setWhen(e.target.value)}
-          aria-label="Agendar para"
-          className="rounded-md border border-border bg-surface/60 px-3 py-2.5 text-sm focus:border-amber focus:outline-none"
-        />
-      </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={runPreview}
+                disabled={!file || loading !== null}
+                className="rounded-md border border-border px-3 py-2 text-sm text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
+              >
+                {loading === "preview" ? "revelando…" : "Ver render real"}
+              </button>
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={!file || loading !== null}
+                className="rounded-md border border-amber px-3 py-2 text-sm font-medium text-amber transition-colors hover:bg-amber hover:text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
+              >
+                {loading === "now" ? "publicando…" : "Postar agora"}
+              </button>
+              <PrimaryButton onClick={() => submit(false)} disabled={!file || !when || loading !== null}>
+                {loading === "schedule" ? "agendando…" : "Agendar"}
+              </PrimaryButton>
+            </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={runPreview}
-          disabled={!file || loading !== null}
-          className="rounded-md border border-border px-4 py-2 text-sm text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
-        >
-          {loading === "preview" ? "revelando…" : "Ver render real"}
-        </button>
-        <button
-          type="button"
-          onClick={() => submit(true)}
-          disabled={!file || loading !== null}
-          className="rounded-md border border-amber px-4 py-2 text-sm font-medium text-amber transition-colors hover:bg-amber hover:text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
-        >
-          {loading === "now" ? "publicando…" : "Postar agora"}
-        </button>
-        <PrimaryButton onClick={() => submit(false)} disabled={!file || !when || loading !== null}>
-          {loading === "schedule" ? "agendando…" : "Agendar"}
-        </PrimaryButton>
-      </div>
+            <div aria-live="polite">
+              {done === "now" && (
+                <p className="text-sm text-green">Na fila ✓ — publica em instantes. Acompanhe em Agenda.</p>
+              )}
+              {done === "schedule" && <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>}
+              {error && <p className="text-sm text-red">{error}</p>}
+            </div>
 
-      <div aria-live="polite">
-        {done === "now" && (
-          <p className="text-sm text-green">Na fila ✓ — publica em instantes. Acompanhe em Agenda.</p>
-        )}
-        {done === "schedule" && <p className="text-sm text-green">Agendado ✓ — veja em Agenda.</p>}
-        {error && <p className="text-sm text-red">{error}</p>}
-      </div>
-
-      {renderUrl && (
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-wider text-text-faint">Render real do server</p>
-          <div className="aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-2xl border border-border">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={renderUrl} alt="Render do Story" className="h-full w-full object-cover" />
-          </div>
-        </div>
-      )}
+            {renderUrl && (
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wider text-text-faint">Render real do server</p>
+                <div className="aspect-[9/16] w-full max-w-[200px] overflow-hidden rounded-2xl border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={renderUrl} alt="Render do Story" className="h-full w-full object-cover" />
+                </div>
+              </div>
+            )}
+          </>
+        }
+      />
     </div>
   );
 }
