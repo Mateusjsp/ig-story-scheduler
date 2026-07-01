@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { StoryEditor } from "@/components/story-editor";
-import { newTextElement, type StoryDoc } from "@/lib/story-doc";
+import { type StoryDoc } from "@/lib/story-doc";
 
 type Account = { id: string; label: string };
 
@@ -12,7 +12,8 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
-  const [doc, setDoc] = useState<StoryDoc>(() => ({ version: 1, elements: [newTextElement()] }));
+  // Começa sem texto: foto-first. O usuário adiciona texto/emoji se quiser.
+  const [doc, setDoc] = useState<StoryDoc>(() => ({ version: 1, elements: [] }));
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
@@ -21,9 +22,26 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const [done, setDone] = useState<"schedule" | "now" | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const MAX_BYTES = 25 * 1024 * 1024;
+
   function pickFile(f: File | null) {
     setDone(null);
     setRenderUrl(null);
+    setError(null);
+    if (f) {
+      if (!f.type.startsWith("image/")) {
+        setError("Selecione um arquivo de imagem.");
+        return;
+      }
+      if (f.size > MAX_BYTES) {
+        setError("Imagem maior que 25 MB — escolha uma menor.");
+        return;
+      }
+      // HEIC (iPhone) não renderiza em <img>: avisa, mas deixa seguir (o server trata).
+      if (/heic|heif/i.test(f.type) || /\.hei[cf]$/i.test(f.name)) {
+        setError("Foto HEIC do iPhone: o preview pode não aparecer, mas o post é gerado normalmente.");
+      }
+    }
     setFile(f);
     setBgUrl((old) => {
       if (old) URL.revokeObjectURL(old);

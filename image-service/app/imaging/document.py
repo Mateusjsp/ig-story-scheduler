@@ -55,8 +55,22 @@ class StickerElement(BaseModel):
 Element = Union[TextElement, StickerElement]
 
 
+class Photo(BaseModel):
+    """Enquadramento da foto no primeiro plano (crop/zoom/pan).
+
+    scale=1 => 'ajustar' (foto inteira, blur nas bordas). scale>1 dá zoom e corta.
+    offset_x/y deslocam a foto (fração da largura/altura do frame). Default = como
+    era antes (contain centralizado), então docs antigos não mudam.
+    """
+
+    scale: float = Field(default=1.0, ge=1.0, le=5.0)
+    offset_x: float = Field(default=0.0, ge=-1.0, le=1.0)
+    offset_y: float = Field(default=0.0, ge=-1.0, le=1.0)
+
+
 class StoryDoc(BaseModel):
     version: int = 1
+    photo: Photo = Field(default_factory=Photo)
     elements: list[Element] = Field(default_factory=list)
 
     @classmethod

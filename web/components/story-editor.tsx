@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import {
+  DEFAULT_PHOTO,
   FONT_CSS,
   newStickerElement,
   newTextElement,
   notoUrl,
   type Element,
+  type Photo,
   type StickerElement,
   type StoryDoc,
   type TextElement,
@@ -24,7 +26,8 @@ type Patch = Record<string, unknown>;
 type Gesture =
   | { kind: "move"; id: string; ox: number; oy: number; sx: number; sy: number }
   | { kind: "rotate"; id: string; cx: number; cy: number; start: number; base: number }
-  | { kind: "resize"; id: string; cx: number; cy: number; dist: number; base: number; field: "size_factor" | "w" };
+  | { kind: "resize"; id: string; cx: number; cy: number; dist: number; base: number; field: "size_factor" | "w" }
+  | { kind: "pan"; sx: number; sy: number; ox: number; oy: number };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -43,8 +46,21 @@ export function StoryEditor({
   const gesture = useRef<Gesture | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
   const selected = doc.elements.find((e) => e.id === selectedId) ?? null;
+  const photo: Photo = doc.photo ?? DEFAULT_PHOTO;
+
+  function setPhoto(patch: Partial<Photo>) {
+    onChange({ ...doc, photo: { ...photo, ...patch } });
+  }
+
+  // Formato da foto + escala pra preencher o frame 9:16 (a partir do aspecto).
+  const frameAR = 9 / 16;
+  const imgAR = natural ? natural.w / natural.h : null;
+  const format =
+    imgAR == null ? null : imgAR > 1.15 ? "Paisagem" : imgAR < 0.87 ? "Retrato" : "Quadrado";
+  const fillScale = imgAR == null ? 1 : Math.max(frameAR / imgAR, imgAR / frameAR);
 
   function update(id: string, patch: Patch) {
     onChange({
@@ -139,12 +155,72 @@ export function StoryEditor({
       const d = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
       const val = clamp((g.base * d) / g.dist, 0.02, g.field === "w" ? 1 : 0.3);
       update(g.id, { [g.field]: val });
+    } else if (g.kind === "pan") {
+      setPhoto({
+        offset_x: clamp(g.ox + (e.clientX - g.sx) / r.width, -1, 1),
+        offset_y: clamp(g.oy + (e.clientY - g.sy) / r.height, -1, 1),
+      });
     }
+  }
+
+  function onStagePointerDown(e: RPointerEvent) {
+    setSelectedId(null);
+    if (!bgSrc) return; // sem foto: nada pra arrastar
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    gesture.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: photo.offset_x, oy: photo.offset_y };
   }
 
   function onPointerUp() {
     gesture.current = null;
   }
+
+  // Atalhos: Delete remove, setas movem (Shift = passo maior), Esc desmarca.
+  // Ignora quando o foco está num campo (pra não atrapalhar digitação no painel).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!selectedId) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const el = doc.elements.find((x) => x.id === selectedId);
+      if (!el) return;
+      const step = e.shiftKey ? 0.05 : 0.01;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        remove(selectedId);
+      } else if (e.key === "Escape") {
+        setSelectedId(null);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        update(selectedId, { x: clamp(el.x - step, 0, 1) });
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        update(selectedId, { x: clamp(el.x + step, 0, 1) });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        update(selectedId, { y: clamp(el.y - step, 0, 1) });
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        update(selectedId, { y: clamp(el.y + step, 0, 1) });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, doc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Zoom da foto com a roda do mouse (listener não-passivo pra poder preventDefault).
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      if (!bgSrc) return;
+      e.preventDefault();
+      const next = clamp(photo.scale * (1 - e.deltaY * 0.0015), 1, 5);
+      setPhoto({ scale: Number(next.toFixed(3)) });
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [doc, bgSrc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -154,8 +230,8 @@ export function StoryEditor({
           ref={stageRef}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerDown={() => setSelectedId(null)}
-          style={{ containerType: "inline-size" }}
+          onPointerDown={onStagePointerDown}
+          style={{ containerType: "inline-size", cursor: bgSrc ? "grab" : "default" }}
           className="relative aspect-[9/16] h-[74vh] max-h-[820px] max-w-full touch-none select-none overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl"
         >
           {/* fundo blur-fill aproximado (bate com o server: cover borrado + contain nítido) */}
@@ -164,7 +240,17 @@ export function StoryEditor({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={bgSrc} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" />
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bgSrc} alt="Foto" className="absolute inset-0 h-full w-full object-contain" />
+              <img
+                src={bgSrc}
+                alt="Foto"
+                onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                draggable={false}
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                style={{
+                  transform: `translate(${photo.offset_x * 100}%, ${photo.offset_y * 100}%) scale(${photo.scale})`,
+                  transformOrigin: "center",
+                }}
+              />
             </>
           )}
           {!bgSrc && (
@@ -201,8 +287,35 @@ export function StoryEditor({
         </div>
       </div>
 
-      {/* coluna de controles: ferramentas + propriedades + ajustes do post */}
+      {/* coluna de controles: foto + ferramentas + propriedades + ajustes do post */}
       <div className="space-y-4">
+        {bgSrc && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">Foto</p>
+              {format && <span className="text-xs text-text-dim">{format}</span>}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setPhoto({ scale: 1, offset_x: 0, offset_y: 0 })} className={btnCls}>Ajustar</button>
+              <button type="button" onClick={() => setPhoto({ scale: Number(fillScale.toFixed(3)), offset_x: 0, offset_y: 0 })} className={btnCls}>Preencher</button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-text-dim">
+              Zoom
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={0.01}
+                value={photo.scale}
+                onChange={(e) => setPhoto({ scale: Number(e.target.value) })}
+                className="flex-1 accent-amber"
+                aria-label="Zoom da foto"
+              />
+            </label>
+            <p className="text-[0.7rem] text-text-faint">arraste a foto no palco pra reposicionar · roda do mouse dá zoom</p>
+          </div>
+        )}
+
         <p className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">
           Camadas
         </p>

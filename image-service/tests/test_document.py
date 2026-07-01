@@ -53,6 +53,29 @@ def test_empty_doc_is_noop():
     assert np.array_equal(np.asarray(base), np.asarray(out))
 
 
+def test_photo_default_and_zoom_changes_output():
+    from app.imaging.media import process_image_bytes
+    import io as _io
+    from PIL import Image as _Image, ImageDraw as _Draw
+
+    src = _Image.new("RGB", (1600, 900), (30, 80, 130))
+    _Draw.Draw(src).ellipse([700, 350, 900, 550], fill=(240, 140, 60))
+    buf = _io.BytesIO()
+    src.save(buf, "JPEG")
+    data = buf.getvalue()
+
+    fit = process_image_bytes(data, None, None, StoryDoc())
+    zoom = process_image_bytes(
+        data, None, None, StoryDoc.model_validate({"photo": {"scale": 2.0}})
+    )
+    assert fit != zoom  # zoom recorta -> bytes diferentes
+
+
+def test_photo_rejects_bad_scale():
+    with pytest.raises(Exception):
+        StoryDoc.model_validate({"photo": {"scale": 0.5}})
+
+
 def test_codepoints_drops_variation_selector():
     assert codepoints("😀") == "1f600"
     assert codepoints("❤️") == "2764"  # sem o FE0F

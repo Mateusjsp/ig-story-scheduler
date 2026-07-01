@@ -38,8 +38,18 @@ export interface StickerElement {
 
 export type Element = TextElement | StickerElement;
 
+// Enquadramento da foto (crop/zoom/pan). scale=1 = ajustar (foto inteira + blur).
+export interface Photo {
+  scale: number; // >=1
+  offset_x: number; // fração da largura do frame, -1..1
+  offset_y: number;
+}
+
+export const DEFAULT_PHOTO: Photo = { scale: 1, offset_x: 0, offset_y: 0 };
+
 export interface StoryDoc {
   version: number;
+  photo?: Photo;
   elements: Element[];
 }
 

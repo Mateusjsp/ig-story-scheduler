@@ -10,7 +10,7 @@ import io
 
 from PIL import Image, ImageFilter, ImageOps
 
-from app.imaging.document import StoryDoc
+from app.imaging.document import Photo, StoryDoc
 from app.imaging.style import StyleConfig
 from app.imaging.text_overlay import overlay_text, render_document
 
@@ -46,11 +46,17 @@ def build_story_image(
     img = img.convert("RGB")
     background = _cover(img, STORY_SIZE).filter(ImageFilter.GaussianBlur(BLUR_RADIUS))
 
-    foreground = img.copy()
-    foreground.thumbnail(STORY_SIZE, Image.LANCZOS)  # cabe inteira (sem corte)
-    x = (STORY_SIZE[0] - foreground.width) // 2
-    y = (STORY_SIZE[1] - foreground.height) // 2
-    background.paste(foreground, (x, y))
+    # Enquadramento do primeiro plano: base = contain (scale 1), com zoom/pan.
+    photo = (doc.photo if doc is not None else None) or Photo()
+    fw, fh = STORY_SIZE
+    iw, ih = img.size
+    fit = min(fw / iw, fh / ih)
+    aw = max(1, round(iw * fit * photo.scale))
+    ah = max(1, round(ih * fit * photo.scale))
+    foreground = img.resize((aw, ah), Image.LANCZOS)
+    x = round((fw - aw) / 2 + photo.offset_x * fw)
+    y = round((fh - ah) / 2 + photo.offset_y * fh)
+    background.paste(foreground, (x, y))  # PIL recorta o que sai do frame
 
     if doc is not None and doc.elements:
         background = render_document(background, doc)
