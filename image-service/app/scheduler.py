@@ -11,6 +11,7 @@ Supabase estiver configurado.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -26,8 +27,37 @@ MAX_ATTEMPTS = 3
 STUCK_MINUTES = 10  # post em "publishing" além disso = órfão, volta pra fila
 
 
+class PublishedButNotRecorded(Exception):
+    """Publicou na Meta mas não gravou o ig_media_id (não reenfileirar!)."""
+
+    def __init__(self, ig_media_id: str):
+        self.ig_media_id = ig_media_id
+        super().__init__(f"publicado ({ig_media_id}) mas não gravado")
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _mark_published(sb, pid: str, ig_media_id: str) -> None:
+    """Grava o sucesso com retry curto — falha transitória do banco não pode
+    devolver pra fila um post JÁ publicado (isso duplicaria na Meta)."""
+    last: Exception | None = None
+    for _ in range(3):
+        try:
+            sb.table("posts").update(
+                {
+                    "status": "published",
+                    "ig_media_id": ig_media_id,
+                    "published_at": _now().isoformat(),
+                    "error": None,
+                }
+            ).eq("id", pid).execute()
+            return
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            time.sleep(2)
+    raise PublishedButNotRecorded(ig_media_id) from last
 
 
 def _safe_err(exc: Exception) -> str:
@@ -66,6 +96,17 @@ def publish_due() -> None:
 def _publish_one(sb, post: dict) -> None:
     pid = post["id"]
     try:
+        # Curto-circuito: se o post já tem ig_media_id, ele JÁ saiu na Meta
+        # (requeue de um post publicado). Só conserta o status, não republica.
+        fresh = (
+            sb.table("posts").select("ig_media_id").eq("id", pid).single().execute().data
+        )
+        if fresh and fresh.get("ig_media_id"):
+            sb.table("posts").update({"status": "published", "error": None}).eq(
+                "id", pid
+            ).execute()
+            log.info("post %s já publicado (%s) — corrigindo status", pid, fresh["ig_media_id"])
+            return
         media = (
             sb.table("media")
             .select("processed_url, feed_caption")
@@ -99,15 +140,20 @@ def _publish_one(sb, post: dict) -> None:
             )
         else:
             ig_media_id = publisher.publish_story(image_url)
-        sb.table("posts").update(
-            {
-                "status": "published",
-                "ig_media_id": ig_media_id,
-                "published_at": _now().isoformat(),
-                "error": None,
-            }
-        ).eq("id", pid).execute()
+        _mark_published(sb, pid, ig_media_id)
         log.info("post %s publicado (%s)", pid, ig_media_id)
+    except PublishedButNotRecorded as exc:
+        # Publicou de verdade mas não gravou. NUNCA reenfileirar (duplicaria).
+        try:
+            sb.table("posts").update(
+                {
+                    "status": "failed",
+                    "ig_media_id": exc.ig_media_id,
+                    "error": f"publicado na Meta ({exc.ig_media_id}) mas não gravado — verificar",
+                }
+            ).eq("id", pid).execute()
+        except Exception:  # noqa: BLE001
+            log.error("post %s publicado (%s) e sem gravar status", pid, exc.ig_media_id)
     except Exception as exc:  # noqa: BLE001
         attempts = post.get("attempts", 0)  # claim já incrementou
         status = "queued" if attempts < MAX_ATTEMPTS else "failed"
