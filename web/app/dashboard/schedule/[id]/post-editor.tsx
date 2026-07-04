@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton, Badge } from "@/components/ui";
 import { StoryEditor } from "@/components/story-editor";
-import { type StoryDoc } from "@/lib/story-doc";
+import { TARGETS, targetFromAspect, type StoryDoc } from "@/lib/story-doc";
 
 type Post = {
   id: string;
@@ -15,6 +15,8 @@ type Post = {
   doc: StoryDoc;
   bg_url: string | null;
   has_original: boolean;
+  aspect: string | null;
+  feed_caption: string | null;
 };
 type Account = { id: string; label: string };
 
@@ -30,11 +32,15 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
   const [doc, setDoc] = useState<StoryDoc>(post.doc);
   const [when, setWhen] = useState(toLocalInput(post.scheduled_at));
   const [accountId, setAccountId] = useState(post.account_id);
+  const [feedCaption, setFeedCaption] = useState(post.feed_caption ?? "");
   const [busy, setBusy] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
   const isFailed = post.status === "failed";
+  // Proporção veio do media.aspect gravado; reprocesso reusa o mesmo destino.
+  const target = targetFromAspect(post.aspect);
+  const meta = TARGETS[target];
 
   async function save() {
     setBusy("save");
@@ -45,6 +51,11 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
       if (when !== toLocalInput(post.scheduled_at)) body.scheduled_at = new Date(when).toISOString();
       if (accountId !== post.account_id) body.account_id = accountId;
       if (JSON.stringify(doc) !== JSON.stringify(post.doc)) body.doc = doc;
+      // Destino da renderização (proporção) — o server reprocessa no mesmo aspecto.
+      if (body.doc !== undefined) body.target = target;
+      if (meta.isFeed && feedCaption !== (post.feed_caption ?? "")) {
+        body.feed_caption = feedCaption;
+      }
       if (isFailed) body.reenqueue = true;
 
       if (Object.keys(body).length === 0) {
@@ -87,6 +98,9 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Badge status={post.status} />
+        <span className="rounded-full border border-border px-2.5 py-0.5 text-xs text-text-dim">
+          {meta.label} · {meta.aspectLabel}
+        </span>
         {isFailed && post.error && <span className="text-sm text-red">{post.error}</span>}
       </div>
 
@@ -101,8 +115,25 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
         doc={doc}
         onChange={setDoc}
         bgSrc={post.bg_url}
+        aspectW={meta.w}
+        aspectH={meta.h}
         footer={
           <>
+            {meta.isFeed && (
+              <label className="block space-y-1">
+                <span className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">
+                  Legenda do feed
+                </span>
+                <textarea
+                  value={feedCaption}
+                  onChange={(e) => setFeedCaption(e.target.value)}
+                  rows={3}
+                  placeholder="Legenda de texto real (hashtags, @menções, quebras de linha)…"
+                  className="w-full resize-none rounded-md border border-border bg-surface/60 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-amber focus:outline-none"
+                />
+              </label>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Conta" className={inputCls}>
                 {accounts.map((a) => (

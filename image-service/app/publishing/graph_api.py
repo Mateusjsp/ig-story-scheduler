@@ -1,11 +1,15 @@
-"""Publicação de Story via Content Publishing API (Instagram Login).
+"""Publicação de Story/Feed via Content Publishing API (Instagram Login).
 
 Fluxo de 3 passos:
-  1. POST /{ig-user-id}/media         -> cria container (media_type=STORIES)
+  1. POST /{ig-user-id}/media         -> cria container (media_type conforme destino)
   2. GET  /{container-id}?fields=status_code -> espera virar FINISHED
   3. POST /{ig-user-id}/media_publish -> publica
 O passo 2 evita o erro 9007 (Media ID is not available) quando se publica antes
 da Meta terminar de baixar a imagem da URL.
+
+Destinos (media_type): "STORIES" (story), "IMAGE" (foto no feed — a API assume
+IMAGE quando media_type é omitido, então não o enviamos), "REELS" (vídeo). Só o
+feed aceita `caption` (legenda de texto real).
 
 Diferente do CLI original, o publisher é por-conta: recebe credenciais no
 construtor (cada ig_account tem as suas), sem depender de um .env global.
@@ -40,19 +44,31 @@ class GraphApiPublisher(Publisher):
     def _base(self) -> str:
         return f"{self.graph_host}/{self.graph_version}"
 
-    def publish_story(self, image_url: str) -> str:
-        container_id = self._create_container(image_url)
+    def publish(
+        self,
+        media_url: str,
+        *,
+        media_type: str = "IMAGE",
+        caption: str | None = None,
+    ) -> str:
+        container_id = self._create_container(media_url, media_type, caption)
         self._wait_until_ready(container_id)
         return self._publish_container(container_id)
 
-    def _create_container(self, image_url: str) -> str:
+    def _create_container(
+        self, media_url: str, media_type: str = "IMAGE", caption: str | None = None
+    ) -> str:
+        data = {"image_url": media_url, "access_token": self.access_token}
+        # A API assume IMAGE (feed) quando media_type é omitido; enviar "IMAGE"
+        # explícito não é aceito, então só mandamos STORIES/REELS.
+        if media_type and media_type != "IMAGE":
+            data["media_type"] = media_type
+        # Legenda só faz sentido no feed; story ignora.
+        if caption and media_type != "STORIES":
+            data["caption"] = caption
         resp = requests.post(
             f"{self._base}/{self.ig_user_id}/media",
-            data={
-                "media_type": "STORIES",
-                "image_url": image_url,
-                "access_token": self.access_token,
-            },
+            data=data,
             timeout=TIMEOUT,
         )
         self._raise_for_meta_error(resp, "criar container")

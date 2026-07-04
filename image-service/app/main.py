@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.imaging.document import StoryDoc
-from app.imaging.media import STORY_SIZE, normalize_for_web, process_image_bytes
+from app.imaging.media import normalize_for_web, process_image_bytes, resolve_size
 from app.imaging.style import StyleConfig, resolve_font_path
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
@@ -128,14 +128,20 @@ def _parse_doc(doc: str | None) -> StoryDoc | None:
 
 
 def _process_or_400(
-    data: bytes, caption: str | None, style: StyleConfig, doc: StoryDoc | None
+    data: bytes,
+    caption: str | None,
+    style: StyleConfig,
+    doc: StoryDoc | None,
+    target: str | None = None,
 ) -> bytes:
     if not data:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Imagem maior que 25 MB.")
     try:
-        return process_image_bytes(data, (caption or "").strip() or None, style, doc)
+        return process_image_bytes(
+            data, (caption or "").strip() or None, style, doc, target
+        )
     except Exception as exc:  # imagem inválida, formato não suportado, etc.
         raise HTTPException(status_code=400, detail=f"Falha ao processar: {exc}")
 
@@ -146,9 +152,12 @@ async def preview(
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
     doc: str | None = Form(default=None),
+    target: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> Response:
-    out = _process_or_400(await file.read(), caption, _parse_style(style), _parse_doc(doc))
+    out = _process_or_400(
+        await file.read(), caption, _parse_style(style), _parse_doc(doc), target
+    )
     return Response(content=out, media_type="image/jpeg")
 
 
@@ -176,6 +185,7 @@ async def process(
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
     doc: str | None = Form(default=None),
+    target: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
     """Trata a imagem, grava o tratado + o original no Storage e retorna as URLs.
@@ -184,7 +194,7 @@ async def process(
     usuário reenviar a foto — ver /reprocess.
     """
     raw = await file.read()
-    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc))
+    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc), target)
     try:
         path, url = upload_processed(owner, out)
         orig_path, orig_url = upload_original(
@@ -192,13 +202,14 @@ async def process(
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no Storage: {exc}")
+    w, h = resolve_size(target)
     return {
         "processed_path": path,
         "processed_url": url,
         "original_path": orig_path,
         "original_url": orig_url,
-        "width": STORY_SIZE[0],
-        "height": STORY_SIZE[1],
+        "width": w,
+        "height": h,
     }
 
 
@@ -209,6 +220,7 @@ async def reprocess(
     caption: str | None = Form(default=None),
     style: str | None = Form(default=None),
     doc: str | None = Form(default=None),
+    target: str | None = Form(default=None),
     old_processed_path: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> dict:
@@ -221,16 +233,17 @@ async def reprocess(
         raw = download(original_path)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Original indisponível: {exc}")
-    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc))
+    out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc), target)
     try:
         path, url = upload_processed(owner, out)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no Storage: {exc}")
     if old_processed_path:
         remove(old_processed_path)
+    w, h = resolve_size(target)
     return {
         "processed_path": path,
         "processed_url": url,
-        "width": STORY_SIZE[0],
-        "height": STORY_SIZE[1],
+        "width": w,
+        "height": h,
     }

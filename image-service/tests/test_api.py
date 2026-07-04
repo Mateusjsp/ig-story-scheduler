@@ -35,6 +35,22 @@ def test_preview_returns_story_jpeg():
     assert out.size == (1080, 1920)  # padrão Story
 
 
+def test_preview_feed_45_returns_portrait():
+    files = {"file": ("foto.png", _png_bytes(), "image/png")}
+    r = client.post("/preview", files=files, data={"target": "feed_45"}, headers=HEADERS)
+    assert r.status_code == 200
+    out = Image.open(io.BytesIO(r.content))
+    assert out.size == (1080, 1350)  # feed retrato 4:5
+
+
+def test_preview_feed_11_returns_square():
+    files = {"file": ("foto.png", _png_bytes(), "image/png")}
+    r = client.post("/preview", files=files, data={"target": "feed_11"}, headers=HEADERS)
+    assert r.status_code == 200
+    out = Image.open(io.BytesIO(r.content))
+    assert out.size == (1080, 1080)  # feed quadrado 1:1
+
+
 def test_preview_rejects_empty_file():
     files = {"file": ("vazio.png", b"", "image/png")}
     r = client.post("/preview", files=files, headers=HEADERS)

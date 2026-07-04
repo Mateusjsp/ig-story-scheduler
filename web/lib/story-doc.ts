@@ -10,6 +10,50 @@ import {
 
 export type Align = "left" | "center" | "right";
 
+// Destino da publicação + proporção do frame. `target` casa com o Form do
+// image-service (resolve_size) e `postTarget` com o enum post_target do banco.
+export type Target = "story" | "feed_45" | "feed_11";
+
+export interface TargetMeta {
+  label: string;
+  w: number; // proporção (largura)
+  h: number; // proporção (altura)
+  css: string; // valor de aspect-ratio no CSS
+  aspectLabel: string; // rótulo humano ('9:16')
+  postTarget: "story" | "feed"; // enum no banco (posts.target)
+  isFeed: boolean;
+}
+
+export const TARGETS: Record<Target, TargetMeta> = {
+  story: {
+    label: "Story",
+    w: 9,
+    h: 16,
+    css: "9 / 16",
+    aspectLabel: "9:16",
+    postTarget: "story",
+    isFeed: false,
+  },
+  feed_45: {
+    label: "Feed · retrato",
+    w: 4,
+    h: 5,
+    css: "4 / 5",
+    aspectLabel: "4:5",
+    postTarget: "feed",
+    isFeed: true,
+  },
+  feed_11: {
+    label: "Feed · quadrado",
+    w: 1,
+    h: 1,
+    css: "1 / 1",
+    aspectLabel: "1:1",
+    postTarget: "feed",
+    isFeed: true,
+  },
+};
+
 export interface TextElement {
   id: string;
   type: "text";
@@ -51,6 +95,14 @@ export interface StoryDoc {
   version: number;
   photo?: Photo;
   elements: Element[];
+}
+
+// Rótulo de aspecto guardado em media.aspect -> chave de Target (pra reprocessar
+// na proporção certa). Ausente/desconhecido -> story.
+export function targetFromAspect(aspect: string | null | undefined): Target {
+  if (aspect === "4:5") return "feed_45";
+  if (aspect === "1:1") return "feed_11";
+  return "story";
 }
 
 // URL do PNG do emoji (Noto 512) — o server usa o mesmo asset, então bate.

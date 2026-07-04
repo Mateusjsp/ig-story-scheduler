@@ -40,11 +40,17 @@ export function StoryEditor({
   onChange,
   bgSrc,
   footer,
+  aspectW = 9,
+  aspectH = 16,
 }: {
   doc: StoryDoc;
   onChange: (d: StoryDoc) => void;
   bgSrc: string | null;
   footer?: React.ReactNode;
+  // Proporção do frame (story 9:16, feed 4:5 ou 1:1). Coords do doc são
+  // normalizadas, então só a moldura muda — posições dos elementos não.
+  aspectW?: number;
+  aspectH?: number;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -101,8 +107,8 @@ export function StoryEditor({
     commit({ ...doc, photo: { ...photo, ...patch } });
   }
 
-  // Formato da foto + escala pra preencher o frame 9:16 (a partir do aspecto).
-  const frameAR = 9 / 16;
+  // Formato da foto + escala pra preencher o frame (a partir do aspecto do alvo).
+  const frameAR = aspectW / aspectH;
   const imgAR = natural ? natural.w / natural.h : null;
   const format =
     imgAR == null ? null : imgAR > 1.15 ? "Paisagem" : imgAR < 0.87 ? "Retrato" : "Quadrado";
@@ -296,8 +302,12 @@ export function StoryEditor({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerDown={onStagePointerDown}
-          style={{ containerType: "inline-size", cursor: bgSrc ? "grab" : "default" }}
-          className="relative aspect-[9/16] h-[74vh] max-h-[820px] max-w-full touch-none select-none overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl"
+          style={{
+            containerType: "inline-size",
+            cursor: bgSrc ? "grab" : "default",
+            aspectRatio: `${aspectW} / ${aspectH}`,
+          }}
+          className="relative h-[74vh] max-h-[820px] max-w-full touch-none select-none overflow-hidden rounded-[1.75rem] border-2 border-border bg-bg-raised shadow-2xl"
         >
           {/* fundo blur-fill aproximado (bate com o server: cover borrado + contain nítido) */}
           {bgSrc && (
@@ -322,7 +332,9 @@ export function StoryEditor({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center text-text-faint">
               <span aria-hidden className="text-4xl">▦</span>
               <p className="text-sm">Escolha uma foto pra começar</p>
-              <p className="text-xs">o Story aparece aqui em 9:16 com fundo desfocado</p>
+              <p className="text-xs">
+                a prévia aparece aqui em {aspectW}:{aspectH} com fundo desfocado
+              </p>
             </div>
           )}
 

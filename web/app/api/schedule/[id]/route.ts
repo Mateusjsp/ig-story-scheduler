@@ -17,6 +17,7 @@ type MediaRow = {
   doc: StoryDoc | null;
   original_path: string | null;
   processed_path: string | null;
+  feed_caption: string | null;
 };
 
 export async function PUT(
@@ -35,7 +36,7 @@ export async function PUT(
 
   const { data: post, error: pErr } = await supabase
     .from("posts")
-    .select("id, status, account_id, media_id, media:media_id(id, caption, style, doc, original_path, processed_path)")
+    .select("id, status, account_id, media_id, media:media_id(id, caption, style, doc, original_path, processed_path, feed_caption)")
     .eq("id", id)
     .single();
   if (pErr || !post) return NextResponse.json({ error: "post não encontrado" }, { status: 404 });
@@ -72,6 +73,9 @@ export async function PUT(
     fd.append("owner", user.id);
     fd.append("original_path", media.original_path);
     if (media.processed_path) fd.append("old_processed_path", media.processed_path);
+    // Reprocessa na mesma proporção do post (story 9:16, feed 4:5/1:1). Sem isso,
+    // o /reprocess cairia no default story e um post de feed sairia recortado.
+    if (typeof body.target === "string") fd.append("target", body.target);
 
     const mediaPatch: Record<string, unknown> = {};
     if (docChanged) {
@@ -113,6 +117,18 @@ export async function PUT(
     mediaPatch.processed_url = rp.processed_url;
     const { error: mErr } = await supabase.from("media").update(mediaPatch).eq("id", media.id);
     if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
+  }
+
+  // ---- legenda do feed (campo da API, não exige re-render) ----
+  if (
+    typeof body.feed_caption === "string" &&
+    body.feed_caption !== (media.feed_caption ?? "")
+  ) {
+    const { error: fcErr } = await supabase
+      .from("media")
+      .update({ feed_caption: body.feed_caption || null })
+      .eq("id", media.id);
+    if (fcErr) return NextResponse.json({ error: fcErr.message }, { status: 400 });
   }
 
   // ---- update do post (reagendar, conta, reenfileirar) ----

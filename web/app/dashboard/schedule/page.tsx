@@ -28,7 +28,7 @@ export default async function SchedulePage() {
   const { data: posts } = await supabase
     .from("posts")
     .select(
-      "id, scheduled_at, status, ig_media_id, account:account_id(username, ig_user_id), media:media_id(caption, processed_url, original_url)",
+      "id, scheduled_at, status, ig_media_id, target, account:account_id(username, ig_user_id), media:media_id(caption, processed_url, original_url)",
     )
     .order("scheduled_at", { ascending: true });
 
@@ -81,6 +81,9 @@ export default async function SchedulePage() {
                       </div>
 
                       <span className="flex shrink-0 items-center gap-3">
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[0.7rem] uppercase tracking-wide text-text-faint">
+                          {p.target === "feed" ? "Feed" : "Story"}
+                        </span>
                         <Badge status={p.status} />
                         {editable && <span aria-hidden className="text-text-faint">›</span>}
                       </span>

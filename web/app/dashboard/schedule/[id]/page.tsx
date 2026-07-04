@@ -17,7 +17,7 @@ export default async function PostDetailPage({
   const { data: post } = await supabase
     .from("posts")
     .select(
-      "id, scheduled_at, status, account_id, error, media:media_id(caption, style, doc, processed_url, original_url, original_path)",
+      "id, scheduled_at, status, account_id, error, target, media:media_id(caption, style, doc, processed_url, original_url, original_path, aspect, feed_caption)",
     )
     .eq("id", id)
     .single();
@@ -36,6 +36,8 @@ export default async function PostDetailPage({
     processed_url: string | null;
     original_url: string | null;
     original_path: string | null;
+    aspect: string | null;
+    feed_caption: string | null;
   } | null;
 
   const initialDoc = media?.doc ?? docFromLegacy(media?.caption, media?.style);
@@ -59,6 +61,8 @@ export default async function PostDetailPage({
           doc: initialDoc,
           bg_url: media?.original_url ?? media?.processed_url ?? null,
           has_original: !!media?.original_path,
+          aspect: media?.aspect ?? null,
+          feed_caption: media?.feed_caption ?? null,
         }}
         accounts={(accounts ?? []).map((a) => ({
           id: a.id,

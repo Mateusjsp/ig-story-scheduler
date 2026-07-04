@@ -61,7 +61,7 @@ def _publish_one(sb, post: dict) -> None:
     try:
         media = (
             sb.table("media")
-            .select("processed_url")
+            .select("processed_url, feed_caption")
             .eq("id", post["media_id"])
             .single()
             .execute()
@@ -84,7 +84,14 @@ def _publish_one(sb, post: dict) -> None:
             access_token=token,
             graph_host=account.get("graph_host") or "https://graph.instagram.com",
         )
-        ig_media_id = publisher.publish_story(image_url)
+        # Destino define o container da Meta: feed = foto no perfil (com legenda de
+        # texto real), story = tela cheia 24h. Default 'story' (posts antigos).
+        if post.get("target") == "feed":
+            ig_media_id = publisher.publish_feed(
+                image_url, caption=(media or {}).get("feed_caption")
+            )
+        else:
+            ig_media_id = publisher.publish_story(image_url)
         sb.table("posts").update(
             {
                 "status": "published",

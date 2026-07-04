@@ -1,5 +1,10 @@
 # Plano 009 — Publicar no Feed (foto, carrossel, reel) além de Story
 
+> **Status (implementado)**: F0–F3 aplicados no working tree e verdes
+> (`pytest` 40/40, `npm run lint`/`build`/TS OK). Falta só o que é SEU: aplicar a
+> migration `0009_post_target.sql` no Supabase (S2) e testar com conta real (S3).
+> F4 (reel/carrossel) segue como incremento futuro (plano à parte).
+
 ## Objetivo
 Permitir agendar/publicar no **feed** do Instagram, não só story. Reusa toda a
 infra existente (OAuth, token, fila `posts`, claim atômico, scheduler). Sem scope

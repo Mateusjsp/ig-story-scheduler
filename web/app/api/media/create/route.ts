@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { docCaption, type StoryDoc } from "@/lib/story-doc";
+import { docCaption, TARGETS, type StoryDoc, type Target } from "@/lib/story-doc";
 
 // Texto concatenado dos elementos do doc (guardado em media.caption).
 function deriveCaption(docRaw: string): string | null {
@@ -27,6 +27,12 @@ export async function POST(request: NextRequest) {
   // `style` é o JSON do preset resolvido no front (caminho legado single-caption).
   const style = (form.get("style") as string) || null;
   const accountId = form.get("account_id") as string;
+  // Destino: 'story' (default) | 'feed_45' | 'feed_11'. Valida contra TARGETS.
+  const targetRaw = (form.get("target") as string) || "story";
+  const target: Target = targetRaw in TARGETS ? (targetRaw as Target) : "story";
+  const meta = TARGETS[target];
+  // Legenda de texto real (só feed).
+  const feedCaption = meta.isFeed ? (form.get("feed_caption") as string) || null : null;
   const scheduledAt = form.get("scheduled_at") as string | null;
   // "Postar agora": enfileira com scheduled_at = agora; o scheduler publica no
   // próximo ciclo (~1 min), reusando o mesmo caminho atômico do agendamento.
@@ -68,6 +74,7 @@ export async function POST(request: NextRequest) {
   if (docRaw) fd.append("doc", docRaw);
   if (caption) fd.append("caption", caption);
   if (style) fd.append("style", style);
+  fd.append("target", target);
   let procRes: Response;
   try {
     procRes = await fetch(`${base}/process`, {
@@ -109,6 +116,8 @@ export async function POST(request: NextRequest) {
       processed_url: processed.processed_url,
       width: processed.width,
       height: processed.height,
+      feed_caption: feedCaption,
+      aspect: meta.aspectLabel,
       status: "processed",
     })
     .select("id")
@@ -121,6 +130,7 @@ export async function POST(request: NextRequest) {
     account_id: accountId,
     media_id: media.id,
     scheduled_at: scheduledDate.toISOString(),
+    target: meta.postTarget,
     status: "queued",
   });
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 400 });

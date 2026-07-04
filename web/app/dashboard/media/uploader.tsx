@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { StoryEditor } from "@/components/story-editor";
-import { type StoryDoc } from "@/lib/story-doc";
+import { TARGETS, type StoryDoc, type Target } from "@/lib/story-doc";
 
 type Account = { id: string; label: string };
 
@@ -14,6 +14,10 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   // Começa sem texto: foto-first. O usuário adiciona texto/emoji se quiser.
   const [doc, setDoc] = useState<StoryDoc>(() => ({ version: 1, elements: [] }));
+  // Destino: Story (9:16) por padrão; feed (4:5 / 1:1) muda a moldura + habilita
+  // a legenda de texto real.
+  const [target, setTarget] = useState<Target>("story");
+  const [feedCaption, setFeedCaption] = useState("");
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
@@ -23,6 +27,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const MAX_BYTES = 25 * 1024 * 1024;
+  const meta = TARGETS[target];
 
   async function pickFile(f: File | null) {
     setDone(null);
@@ -79,6 +84,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("doc", JSON.stringify(doc));
+      fd.append("target", target);
       const res = await fetch("/api/preview", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "falha");
       const blob = await res.blob();
@@ -102,6 +108,8 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
       fd.append("file", file);
       fd.append("account_id", accountId);
       fd.append("doc", JSON.stringify(doc));
+      fd.append("target", target);
+      if (meta.isFeed && feedCaption.trim()) fd.append("feed_caption", feedCaption);
       if (immediate) fd.append("now", "1");
       // `when` vem do datetime-local (horário local). Converte pra ISO (UTC).
       else fd.append("scheduled_at", new Date(when).toISOString());
@@ -141,8 +149,51 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         doc={doc}
         onChange={setDoc}
         bgSrc={bgUrl}
+        aspectW={meta.w}
+        aspectH={meta.h}
         footer={
           <>
+            <div className="space-y-2">
+              <p className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">
+                Destino
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(TARGETS) as Target[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setTarget(t);
+                      setRenderUrl(null); // proporção mudou: prévia antiga não vale
+                    }}
+                    aria-pressed={target === t}
+                    className={
+                      target === t
+                        ? "rounded-full border border-amber bg-amber/10 px-3 py-1.5 text-xs font-medium text-amber"
+                        : "rounded-full border border-border px-3 py-1.5 text-xs text-text-dim transition-colors hover:border-amber hover:text-amber"
+                    }
+                  >
+                    {TARGETS[t].label} · {TARGETS[t].aspectLabel}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {meta.isFeed && (
+              <label className="block space-y-1">
+                <span className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">
+                  Legenda do feed
+                </span>
+                <textarea
+                  value={feedCaption}
+                  onChange={(e) => setFeedCaption(e.target.value)}
+                  rows={3}
+                  placeholder="Legenda de texto real (hashtags, @menções, quebras de linha)…"
+                  className="w-full resize-none rounded-md border border-border bg-surface/60 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-amber focus:outline-none"
+                />
+              </label>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <select
                 value={accountId}
@@ -196,9 +247,12 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
             {renderUrl && (
               <div className="space-y-2">
                 <p className="text-xs uppercase tracking-wider text-text-faint">Render real do server</p>
-                <div className="aspect-[9/16] w-full max-w-[200px] overflow-hidden rounded-2xl border border-border">
+                <div
+                  style={{ aspectRatio: meta.css }}
+                  className="w-full max-w-[200px] overflow-hidden rounded-2xl border border-border"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={renderUrl} alt="Render do Story" className="h-full w-full object-cover" />
+                  <img src={renderUrl} alt="Render da publicação" className="h-full w-full object-cover" />
                 </div>
               </div>
             )}
