@@ -1,12 +1,32 @@
 """Testes do documento de camadas (StoryDoc) e render multi-elemento."""
+from pathlib import Path
+
 import numpy as np
 import pytest
 from PIL import Image
 
 import app.imaging.text_overlay as to
-from app.imaging.document import StickerElement, StoryDoc
+from app.imaging.document import StickerElement, StoryDoc, TextElement
 from app.imaging.emoji import codepoints
 from app.imaging.text_overlay import render_document
+
+FIXTURES = Path(__file__).parent.parent.parent / "shared" / "fixtures" / "story-docs"
+
+
+def test_fixtures_parse_and_defaults():
+    for f in sorted(FIXTURES.glob("*.json")):
+        doc = StoryDoc.model_validate_json(f.read_text(encoding="utf-8"))
+        assert doc.version == 1
+    minimal = StoryDoc.model_validate_json(
+        (FIXTURES / "minimal.json").read_text(encoding="utf-8")
+    )
+    text, sticker = minimal.elements
+    # Defaults de desserialização — devem bater com web/lib/story-doc.test.ts.
+    assert isinstance(text, TextElement)
+    assert (text.x, text.y, text.w, text.size_factor) == (0.5, 0.5, 0.8, 0.07)
+    assert isinstance(sticker, StickerElement)
+    assert sticker.w == 0.2
+    assert minimal.photo.scale == 1.0
 
 
 def _img() -> Image.Image:

@@ -153,7 +153,7 @@ export function newStickerElement(emoji: string, partial: Partial<StickerElement
     emoji,
     x: 0.5,
     y: 0.5,
-    w: 0.22,
+    w: 0.2, // igual ao default de desserialização do Python (document.py)
     rotation: 0,
     ...partial,
   };
