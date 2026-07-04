@@ -24,9 +24,9 @@ atualize sua linha ao terminar.
 | 007 | Pipeline de CI (pytest + build/lint) | P2 | S | — | DONE |
 | 008 | Webhooks de menção/DM + app híbrido | — | L | App Review Meta | BLOCKED (externo) |
 | 009 | Publicar no feed (foto 4:5/1:1) | — | M | — | DONE (F0-F3 no working tree; falta migration 0009 + teste real) |
-| 010 | Validar dono do `account_id` (anti-IDOR) | P1 | S | — | TODO |
-| 011 | Token fora de logs e `posts.error` | P1 | S | — | TODO |
-| 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | TODO |
+| 010 | Validar dono do `account_id` (anti-IDOR) | P1 | S | — | DONE |
+| 011 | Token fora de logs e `posts.error` | P1 | S | — | DONE |
+| 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | DONE |
 | 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | TODO |
 | 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | TODO |
 | 015 | Refresh não demove conta em erro transitório | P2 | S | — | TODO |
