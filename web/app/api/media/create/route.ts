@@ -42,6 +42,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "dados incompletos" }, { status: 400 });
   }
 
+  // A conta precisa ser do próprio usuário (RLS já filtra ig_accounts por owner).
+  const { data: account } = await supabase
+    .from("ig_accounts")
+    .select("id")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!account) {
+    return NextResponse.json({ error: "conta não encontrada" }, { status: 404 });
+  }
+
   let scheduledDate: Date;
   if (immediate) {
     scheduledDate = new Date();

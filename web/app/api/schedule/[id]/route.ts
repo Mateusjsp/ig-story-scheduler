@@ -143,7 +143,17 @@ export async function PUT(
     }
     patch.scheduled_at = when.toISOString();
   }
-  if (typeof body.account_id === "string") patch.account_id = body.account_id;
+  if (typeof body.account_id === "string") {
+    const { data: account } = await supabase
+      .from("ig_accounts")
+      .select("id")
+      .eq("id", body.account_id)
+      .maybeSingle();
+    if (!account) {
+      return NextResponse.json({ error: "conta não encontrada" }, { status: 404 });
+    }
+    patch.account_id = body.account_id;
+  }
   // reenfileirar um post que falhou: volta pra fila, zera erro/tentativas.
   if (body.reenqueue === true || (post.status === "failed" && patch.scheduled_at)) {
     patch.status = "queued";
