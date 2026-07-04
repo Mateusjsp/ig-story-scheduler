@@ -212,10 +212,21 @@ def refresh_tokens() -> None:
             ).eq("id", acc["id"]).execute()
             log.info("token da conta %s renovado", acc["id"])
         except Exception as exc:  # noqa: BLE001
-            sb.table("ig_accounts").update({"status": "token_expired"}).eq(
-                "id", acc["id"]
-            ).execute()
-            log.warning("refresh da conta %s falhou: %s", acc["id"], _safe_err(exc))
+            resp_status = getattr(getattr(exc, "response", None), "status_code", None)
+            if resp_status is not None and 400 <= resp_status < 500:
+                # A Meta rejeitou o token: expirado/revogado de verdade.
+                sb.table("ig_accounts").update({"status": "token_expired"}).eq(
+                    "id", acc["id"]
+                ).execute()
+                log.warning(
+                    "refresh da conta %s: token rejeitado (HTTP %s)", acc["id"], resp_status
+                )
+            else:
+                # Transitório (rede/5xx/parse/decrypt): mantém active; tenta no
+                # próximo ciclo (12h) — há dias de folga antes do token expirar.
+                log.warning(
+                    "refresh da conta %s falhou (transitório): %s", acc["id"], _safe_err(exc)
+                )
 
 
 def start_scheduler() -> BackgroundScheduler | None:

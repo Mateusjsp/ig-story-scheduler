@@ -104,6 +104,64 @@ def test_requeue_stuck_filters_publishing_and_old():
     )
 
 
+def _refresh_sb(account):
+    sb = MagicMock()
+    sb.table.return_value.select.return_value.eq.return_value.lte.return_value.execute.return_value.data = [
+        account
+    ]
+    return sb
+
+
+def test_refresh_transient_error_keeps_active():
+    sb = _refresh_sb({"id": "a1", "access_token_enc": "enc", "graph_host": None})
+    with patch.object(scheduler, "get_supabase", return_value=sb), patch.object(
+        scheduler, "decrypt_token", return_value="tok"
+    ), patch.object(scheduler.requests, "get", side_effect=requests.ConnectionError()):
+        scheduler.refresh_tokens()
+
+    statuses = [
+        c[0][0].get("status")
+        for c in sb.table.return_value.update.call_args_list
+    ]
+    assert "token_expired" not in statuses  # blip de rede não demove
+
+
+def test_refresh_4xx_demotes_account():
+    sb = _refresh_sb({"id": "a1", "access_token_enc": "enc", "graph_host": None})
+    err = requests.HTTPError()
+    err.response = MagicMock(status_code=400)
+    resp = MagicMock()
+    resp.raise_for_status.side_effect = err
+    with patch.object(scheduler, "get_supabase", return_value=sb), patch.object(
+        scheduler, "decrypt_token", return_value="tok"
+    ), patch.object(scheduler.requests, "get", return_value=resp):
+        scheduler.refresh_tokens()
+
+    statuses = [
+        c[0][0].get("status")
+        for c in sb.table.return_value.update.call_args_list
+    ]
+    assert "token_expired" in statuses  # token rejeitado de verdade
+
+
+def test_refresh_5xx_keeps_active():
+    sb = _refresh_sb({"id": "a1", "access_token_enc": "enc", "graph_host": None})
+    err = requests.HTTPError()
+    err.response = MagicMock(status_code=500)
+    resp = MagicMock()
+    resp.raise_for_status.side_effect = err
+    with patch.object(scheduler, "get_supabase", return_value=sb), patch.object(
+        scheduler, "decrypt_token", return_value="tok"
+    ), patch.object(scheduler.requests, "get", return_value=resp):
+        scheduler.refresh_tokens()
+
+    statuses = [
+        c[0][0].get("status")
+        for c in sb.table.return_value.update.call_args_list
+    ]
+    assert "token_expired" not in statuses
+
+
 def test_publish_due_uses_atomic_claim():
     sb = MagicMock()
     sb.rpc.return_value.execute.return_value.data = []
