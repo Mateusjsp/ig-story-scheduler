@@ -79,7 +79,8 @@ class GraphApiPublisher(Publisher):
         for _ in range(POLL_MAX_TRIES):
             resp = requests.get(
                 url,
-                params={"fields": "status_code", "access_token": self.access_token},
+                params={"fields": "status_code"},
+                headers={"Authorization": f"Bearer {self.access_token}"},
                 timeout=TIMEOUT,
             )
             self._raise_for_meta_error(resp, "checar status do container")

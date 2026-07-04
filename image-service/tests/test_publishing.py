@@ -46,6 +46,18 @@ def test_feed_container_omits_media_type_and_sends_caption():
     assert create_data["caption"] == "minha legenda #foto"
 
 
+def test_status_poll_uses_bearer_header_not_query():
+    create, status, publish = _fake_responses()
+    with patch("app.publishing.graph_api.requests.post", side_effect=[create, publish]), patch(
+        "app.publishing.graph_api.requests.get", return_value=status
+    ) as get:
+        _pub().publish("http://img", media_type="STORIES")
+
+    # Token nunca na query (vaza em logs de exceção do requests); só no header.
+    assert "access_token" not in get.call_args.kwargs.get("params", {})
+    assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer tok"
+
+
 def test_publish_story_wrapper_keeps_behavior():
     create, status, publish = _fake_responses(publish_id="m2")
     with patch("app.publishing.graph_api.requests.post", side_effect=[create, publish]) as post, patch(

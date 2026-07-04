@@ -30,6 +30,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _safe_err(exc: Exception) -> str:
+    """Mensagem sem URL/token — exceções do requests embutem a URL chamada."""
+    if isinstance(exc, requests.RequestException):
+        return f"{type(exc).__name__} ao chamar a API da Meta"
+    return str(exc)
+
+
 def requeue_stuck() -> None:
     """Devolve pra 'queued' posts presos em 'publishing' (processo morreu no meio)."""
     sb = get_supabase()
@@ -104,10 +111,10 @@ def _publish_one(sb, post: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         attempts = post.get("attempts", 0)  # claim já incrementou
         status = "queued" if attempts < MAX_ATTEMPTS else "failed"
-        sb.table("posts").update({"status": status, "error": str(exc)}).eq(
+        sb.table("posts").update({"status": status, "error": _safe_err(exc)}).eq(
             "id", pid
         ).execute()
-        log.warning("post %s falhou (%s/%s): %s", pid, attempts, MAX_ATTEMPTS, exc)
+        log.warning("post %s falhou (%s/%s): %s", pid, attempts, MAX_ATTEMPTS, _safe_err(exc))
 
 
 def refresh_tokens() -> None:
@@ -127,7 +134,8 @@ def refresh_tokens() -> None:
             host = acc.get("graph_host") or s.graph_host
             resp = requests.get(
                 f"{host}/refresh_access_token",
-                params={"grant_type": "ig_refresh_token", "access_token": token},
+                params={"grant_type": "ig_refresh_token"},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=60,
             )
             resp.raise_for_status()
@@ -144,7 +152,7 @@ def refresh_tokens() -> None:
             sb.table("ig_accounts").update({"status": "token_expired"}).eq(
                 "id", acc["id"]
             ).execute()
-            log.warning("refresh da conta %s falhou: %s", acc["id"], exc)
+            log.warning("refresh da conta %s falhou: %s", acc["id"], _safe_err(exc))
 
 
 def start_scheduler() -> BackgroundScheduler | None:
