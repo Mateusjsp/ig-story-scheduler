@@ -71,7 +71,9 @@ class Photo(BaseModel):
 class StoryDoc(BaseModel):
     version: int = 1
     photo: Photo = Field(default_factory=Photo)
-    elements: list[Element] = Field(default_factory=list)
+    # Cap defensivo: doc hostil com milhares de elementos = CPU + fetches seriais
+    # de emoji segurando o worker. 40 é folga ampla sobre o uso real do editor.
+    elements: list[Element] = Field(default_factory=list, max_length=40)
 
     @classmethod
     def parse(cls, raw: str | None) -> "StoryDoc | None":

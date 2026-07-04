@@ -39,6 +39,14 @@ def resolve_size(target: str | None) -> tuple[int, int]:
     return TARGET_SIZES.get(target or DEFAULT_TARGET, STORY_SIZE)
 
 
+def validate_target(target: str | None) -> str:
+    """Nome do destino validado. Desconhecido -> ValueError (endpoint devolve 400)."""
+    t = target or DEFAULT_TARGET
+    if t not in TARGET_SIZES:
+        raise ValueError(f"target inválido: {t!r} (use {sorted(TARGET_SIZES)})")
+    return t
+
+
 MAX_BYTES = 8 * 1024 * 1024  # 8 MB (limite da API para imagem)
 BLUR_RADIUS = 40  # intensidade do fundo borrado
 JPEG_QUALITY = 90

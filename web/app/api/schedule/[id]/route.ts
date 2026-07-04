@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStyle, validateStyle, type StyleConfig } from "@/lib/presets";
-import { docCaption, type StoryDoc } from "@/lib/story-doc";
+import { docCaption, TARGETS, type StoryDoc } from "@/lib/story-doc";
 
 // PUT    /api/schedule/:id  -> edita um post da fila (reagenda, troca conta,
 //                             edita texto/estilo reprocessando, reenfileira)
@@ -75,7 +75,9 @@ export async function PUT(
     if (media.processed_path) fd.append("old_processed_path", media.processed_path);
     // Reprocessa na mesma proporção do post (story 9:16, feed 4:5/1:1). Sem isso,
     // o /reprocess cairia no default story e um post de feed sairia recortado.
-    if (typeof body.target === "string") fd.append("target", body.target);
+    if (typeof body.target === "string" && body.target in TARGETS) {
+      fd.append("target", body.target);
+    }
 
     const mediaPatch: Record<string, unknown> = {};
     if (docChanged) {

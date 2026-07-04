@@ -29,10 +29,10 @@ atualize sua linha ao terminar.
 | 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | DONE |
 | 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | DONE |
 | 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | DONE |
-| 015 | Refresh não demove conta em erro transitório | P2 | S | — | TODO |
-| 016 | Validar JSON do doc antes do /process | P2 | S | — | TODO |
-| 017 | Contrato TS↔Python do StoryDoc (fixtures) | P2 | M | — | TODO |
-| 018 | Defesa em profundidade image-service + SQL | P2 | M | — | TODO |
+| 015 | Refresh não demove conta em erro transitório | P2 | S | — | DONE |
+| 016 | Validar JSON do doc antes do /process | P2 | S | — | DONE |
+| 017 | Contrato TS↔Python do StoryDoc (fixtures) | P2 | M | — | DONE |
+| 018 | Defesa em profundidade image-service + SQL | P2 | M | — | DONE |
 | 019 | Testes de caracterização das rotas web | P2 | L | melhor após 010/012/016/018 | TODO |
 | 020 | Lockfile Python (pip-tools) | P2 | S | — | TODO |
 | 021 | Decompor story-editor.tsx | P3 | L | 019 (e 017 ajuda) | TODO |

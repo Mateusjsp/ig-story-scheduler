@@ -13,6 +13,7 @@ do serverless do painel.
 from __future__ import annotations
 
 import hmac
+import uuid as _uuid
 from contextlib import asynccontextmanager
 
 from fastapi import (
@@ -30,7 +31,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.imaging.document import StoryDoc
-from app.imaging.media import normalize_for_web, process_image_bytes, resolve_size
+from app.imaging.media import (
+    normalize_for_web,
+    process_image_bytes,
+    resolve_size,
+    validate_target,
+)
 from app.imaging.style import StyleConfig, resolve_font_path
 from app.scheduler import publish_due, start_scheduler
 from app.settings import get_settings
@@ -127,6 +133,29 @@ def _parse_doc(doc: str | None) -> StoryDoc | None:
         raise HTTPException(status_code=400, detail=f"Documento inválido: {exc}")
 
 
+def _valid_target_or_400(target: str | None) -> str:
+    """Valida o destino do render. Desconhecido -> 400."""
+    try:
+        return validate_target(target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _valid_owner_or_400(owner: str) -> str:
+    """owner precisa ser UUID (é o prefixo de pasta no Storage, com service role)."""
+    try:
+        _uuid.UUID(owner)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="owner inválido.")
+    return owner
+
+
+def _require_owner_path(owner: str, path: str | None) -> None:
+    """Caminho de Storage precisa estar dentro da pasta do owner (anti-cross-tenant)."""
+    if path and not path.startswith(f"{owner}/"):
+        raise HTTPException(status_code=403, detail="path fora da pasta do owner.")
+
+
 def _process_or_400(
     data: bytes,
     caption: str | None,
@@ -155,6 +184,7 @@ async def preview(
     target: str | None = Form(default=None),
     _: None = Depends(require_service_token),
 ) -> Response:
+    target = _valid_target_or_400(target)
     out = _process_or_400(
         await file.read(), caption, _parse_style(style), _parse_doc(doc), target
     )
@@ -193,6 +223,8 @@ async def process(
     O original é guardado pra permitir reprocessar (editar legenda/estilo) sem o
     usuário reenviar a foto — ver /reprocess.
     """
+    owner = _valid_owner_or_400(owner)
+    target = _valid_target_or_400(target)
     raw = await file.read()
     out = _process_or_400(raw, caption, _parse_style(style), _parse_doc(doc), target)
     try:
@@ -229,6 +261,10 @@ async def reprocess(
     Baixa o original do Storage, aplica doc (ou caption+style) de novo, sobe um
     novo tratado e devolve a URL. O tratado antigo é apagado (best-effort).
     """
+    owner = _valid_owner_or_400(owner)
+    target = _valid_target_or_400(target)
+    _require_owner_path(owner, original_path)
+    _require_owner_path(owner, old_processed_path)
     try:
         raw = download(original_path)
     except Exception as exc:

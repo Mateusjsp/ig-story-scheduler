@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from PIL import Image
 
 import app.imaging.text_overlay as to
@@ -27,6 +28,12 @@ def test_fixtures_parse_and_defaults():
     assert isinstance(sticker, StickerElement)
     assert sticker.w == 0.2
     assert minimal.photo.scale == 1.0
+
+
+def test_doc_rejects_too_many_elements():
+    payload = {"version": 1, "elements": [{"type": "text", "text": "x"} for _ in range(41)]}
+    with pytest.raises(ValidationError):
+        StoryDoc.model_validate(payload)
 
 
 def _img() -> Image.Image:
