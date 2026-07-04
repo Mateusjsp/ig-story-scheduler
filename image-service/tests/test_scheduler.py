@@ -63,12 +63,14 @@ def test_publish_one_skips_when_already_published():
 def test_published_but_not_recorded_goes_failed_not_queued():
     sb, tables = _sb_with_tables()
     _wire_publish_one(sb)
-    # todo update de 'published' (dentro de _mark_published) falha
+    # heartbeat (updated_at) passa; os 3 updates de 'published' em _mark_published
+    # falham; o update final de 'failed' passa.
     tables["posts"].update.return_value.eq.return_value.execute.side_effect = [
+        MagicMock(),  # heartbeat
         RuntimeError("db down"),
         RuntimeError("db down"),
         RuntimeError("db down"),
-        MagicMock(),  # o update final de 'failed' passa
+        MagicMock(),  # 'failed'
     ]
 
     with patch.object(scheduler, "decrypt_token", return_value="tok"), patch.object(
@@ -112,3 +114,32 @@ def test_publish_due_uses_atomic_claim():
         scheduler.publish_due()
 
     sb.rpc.assert_called_with("claim_due_posts", {"lim": 20})
+
+
+def test_publish_due_skips_when_locked():
+    sb = MagicMock()
+    scheduler._publish_lock.acquire()
+    try:
+        with patch.object(scheduler, "get_supabase", return_value=sb), patch.object(
+            scheduler, "requeue_stuck"
+        ):
+            scheduler.publish_due()
+        sb.rpc.assert_not_called()  # não claima enquanto outra passada roda
+    finally:
+        scheduler._publish_lock.release()
+
+
+def test_publish_one_heartbeats_updated_at():
+    sb, tables = _sb_with_tables()
+    _wire_publish_one(sb)
+
+    with patch.object(scheduler, "decrypt_token", return_value="tok"), patch.object(
+        scheduler, "GraphApiPublisher"
+    ) as Pub:
+        Pub.return_value.publish_story.return_value = "MID1"
+        scheduler._publish_one(
+            sb, {"id": "p1", "media_id": "m1", "account_id": "a1", "attempts": 1}
+        )
+
+    updates = [c[0][0] for c in tables["posts"].update.call_args_list]
+    assert {"updated_at"} in [set(u.keys()) for u in updates]  # heartbeat só com updated_at

@@ -11,6 +11,7 @@ Supabase estiver configurado.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -24,7 +25,14 @@ from app.settings import get_settings
 
 log = logging.getLogger("scheduler")
 MAX_ATTEMPTS = 3
-STUCK_MINUTES = 10  # post em "publishing" além disso = órfão, volta pra fila
+# post em "publishing" além disso = órfão, volta pra fila. Folga sobre o pior
+# caso de UM item (poll ~60s + timeouts + retries) — o heartbeat renova o
+# updated_at a cada item, então um lote longo não cruza o limiar.
+STUCK_MINUTES = 15
+
+# Serializa APScheduler × /run-due (pg_cron) dentro do processo: uma passada de
+# publish_due por vez, pra requeue_stuck não mexer no lote em andamento.
+_publish_lock = threading.Lock()
 
 
 class PublishedButNotRecorded(Exception):
@@ -83,14 +91,20 @@ def requeue_stuck() -> None:
 
 
 def publish_due() -> None:
-    requeue_stuck()
-    sb = get_supabase()
-    # Claim atômico (FOR UPDATE SKIP LOCKED): cada post é reivindicado por uma só
-    # instância, evitando publicação dupla com múltiplas réplicas. Ver migration
-    # 0003_claim_posts.sql. O claim já marca 'publishing' e incrementa attempts.
-    claimed = sb.rpc("claim_due_posts", {"lim": 20}).execute()
-    for post in claimed.data or []:
-        _publish_one(sb, post)
+    if not _publish_lock.acquire(blocking=False):
+        log.info("publish_due já em execução — pulando esta passada.")
+        return
+    try:
+        requeue_stuck()
+        sb = get_supabase()
+        # Claim atômico (FOR UPDATE SKIP LOCKED): cada post é reivindicado por uma só
+        # instância, evitando publicação dupla com múltiplas réplicas. Ver migration
+        # 0003_claim_posts.sql. O claim já marca 'publishing' e incrementa attempts.
+        claimed = sb.rpc("claim_due_posts", {"lim": 20}).execute()
+        for post in claimed.data or []:
+            _publish_one(sb, post)
+    finally:
+        _publish_lock.release()
 
 
 def _publish_one(sb, post: dict) -> None:
@@ -132,6 +146,9 @@ def _publish_one(sb, post: dict) -> None:
             access_token=token,
             graph_host=account.get("graph_host") or "https://graph.instagram.com",
         )
+        # Heartbeat: renova updated_at antes de publicar, pra requeue_stuck não
+        # "resgatar" este post enquanto os anteriores do lote ainda publicam.
+        sb.table("posts").update({"updated_at": _now().isoformat()}).eq("id", pid).execute()
         # Destino define o container da Meta: feed = foto no perfil (com legenda de
         # texto real), story = tela cheia 24h. Default 'story' (posts antigos).
         if post.get("target") == "feed":

@@ -27,8 +27,8 @@ atualize sua linha ao terminar.
 | 010 | Validar dono do `account_id` (anti-IDOR) | P1 | S | — | DONE |
 | 011 | Token fora de logs e `posts.error` | P1 | S | — | DONE |
 | 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | DONE |
-| 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | TODO |
-| 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | TODO |
+| 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | DONE |
+| 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | DONE |
 | 015 | Refresh não demove conta em erro transitório | P2 | S | — | TODO |
 | 016 | Validar JSON do doc antes do /process | P2 | S | — | TODO |
 | 017 | Contrato TS↔Python do StoryDoc (fixtures) | P2 | M | — | TODO |
