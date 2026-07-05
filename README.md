@@ -48,11 +48,15 @@ de imagem já testado (blur fill + placement por busyness + desvio de rosto).
 ```bash
 cd image-service
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.lock   # versões pinadas (build reproduzível)
 cp .env.example .env            # preencha SUPABASE_*, INSTAGRAM_*, TOKEN_ENC_KEY
 uvicorn app.main:app --reload   # http://localhost:8000
 pytest                          # testes do core de imagem + API
 ```
+
+> **Atualizar deps**: edite `requirements.txt` (limites `>=`) e regenere o lock:
+> `pip-compile requirements.txt -o requirements.lock --strip-extras` (precisa de
+> `pip install pip-tools`). O `requirements.lock` é o que CI/Docker instalam.
 
 ### 3. web (local)
 ```bash
