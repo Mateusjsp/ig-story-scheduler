@@ -20,6 +20,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libglib2.0-0
       - name: Instalar deps
         run: pip install -r requirements.lock
+      - name: Lint
+        run: ruff check .
       - name: Testes
         run: pytest -q
 
@@ -39,6 +41,8 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
       - name: Testes (se existirem)
         run: npm test --if-present
       - name: Build

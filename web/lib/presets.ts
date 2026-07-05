@@ -102,6 +102,8 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
 ];
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+const FONTS = new Set<FontKey>(["sans-bold", "serif", "condensed", "mono"]);
+const POSITIONS = new Set<Position>(["auto", "top", "center", "bottom"]);
 
 /** Validação leve (o back valida de verdade). Retorna erro legível ou null. */
 export function validateStyle(s: StyleConfig): string | null {
@@ -111,14 +113,19 @@ export function validateStyle(s: StyleConfig): string | null {
   if (s.scrim.opacity < 0 || s.scrim.opacity > 255) return "Opacidade fora de 0–255";
   if (s.outline.width < 0 || s.outline.width > 20) return "Contorno fora de 0–20";
   if (s.size_factor <= 0 || s.size_factor > 0.2) return "Tamanho fora do intervalo";
+  if (!FONTS.has(s.font)) return "Fonte inválida";
+  if (!POSITIONS.has(s.position)) return "Posição inválida";
   return null;
 }
 
-/** Preenche faltantes com o default — tolera config vinda do banco/versão antiga. */
+/** Preenche faltantes com o default — tolera config vinda do banco/versão antiga.
+ *  Constrói por allowlist de campos: chaves desconhecidas do `raw` são descartadas. */
 export function normalizeStyle(raw: Partial<StyleConfig> | null | undefined): StyleConfig {
   return {
-    ...DEFAULT_STYLE,
-    ...raw,
+    font: raw?.font ?? DEFAULT_STYLE.font,
+    text_color: raw?.text_color ?? DEFAULT_STYLE.text_color,
+    position: raw?.position ?? DEFAULT_STYLE.position,
+    size_factor: raw?.size_factor ?? DEFAULT_STYLE.size_factor,
     scrim: { ...DEFAULT_STYLE.scrim, ...raw?.scrim },
     outline: { ...DEFAULT_STYLE.outline, ...raw?.outline },
   };

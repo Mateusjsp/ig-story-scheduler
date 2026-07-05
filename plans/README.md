@@ -36,7 +36,7 @@ atualize sua linha ao terminar.
 | 019 | Testes de caracterização das rotas web | P2 | L | melhor após 010/012/016/018 | TODO |
 | 020 | Lockfile Python (pip-tools) | P2 | S | — | DONE |
 | 021 | Decompor story-editor.tsx | P3 | L | 019 (e 017 ajuda) | TODO |
-| 022 | Baseline DX (ruff, typecheck, env.example, README) | P3 | S | — | TODO |
+| 022 | Baseline DX (ruff, typecheck, env.example, README) | P3 | S | — | DONE |
 | 023 | Perf do render (preview reduzido, emoji vendorizado) | P3 | M | — | TODO |
 
 Status: TODO | IN PROGRESS | DONE | BLOCKED (motivo) | REJECTED (motivo)

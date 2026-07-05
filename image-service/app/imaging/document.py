@@ -9,7 +9,7 @@ caminho legado (overlay_text com placement automático).
 """
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -52,7 +52,7 @@ class StickerElement(BaseModel):
 # União simples (smart mode): payload de texto sem "type" cai em TextElement
 # (default "text"); com "type":"sticker" casa StickerElement. Evita exigir o
 # discriminador explícito e mantém compat com docs antigos.
-Element = Union[TextElement, StickerElement]
+Element = TextElement | StickerElement
 
 
 class Photo(BaseModel):
@@ -76,7 +76,7 @@ class StoryDoc(BaseModel):
     elements: list[Element] = Field(default_factory=list, max_length=40)
 
     @classmethod
-    def parse(cls, raw: str | None) -> "StoryDoc | None":
+    def parse(cls, raw: str | None) -> StoryDoc | None:
         """String JSON -> StoryDoc. None/vazio -> None (usa caminho legado)."""
         if not raw or not raw.strip():
             return None

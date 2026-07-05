@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,7 +44,7 @@ class PublishedButNotRecorded(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _mark_published(sb, pid: str, ig_media_id: str) -> None:
