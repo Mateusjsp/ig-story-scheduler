@@ -14,8 +14,9 @@
       "font": "sans-bold",
       "color": "#FFFFFF",
       "size_factor": 0.07,
-      "scrim": { "enabled": true, "color": "#000000", "opacity": 128, "adaptive": false },
-      "outline": { "enabled": true, "color": "#000000", "width": 3 }
+      "scrim": { "enabled": false, "color": "#000000", "opacity": 128, "adaptive": false },
+      "outline": { "enabled": true, "color": "#000000", "width": 3 },
+      "highlight": { "enabled": true, "color": "#FFD400", "opacity": 230 }
     },
     {
       "id": "s1",

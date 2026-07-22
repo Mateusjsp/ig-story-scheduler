@@ -89,6 +89,18 @@ class Outline(BaseModel):
     _v = field_validator("color")(_valid_hex)
 
 
+class Highlight(BaseModel):
+    """Fundo colorido POR LINHA (marca-texto), justo ao texto — o visual 'assinatura'
+    do Instagram. Diferente do Scrim (uma caixa atrás do bloco inteiro): aqui cada
+    linha ganha sua própria pílula arredondada. Default desligado (retrocompat)."""
+
+    enabled: bool = False
+    color: str = "#FFFFFF"
+    opacity: int = Field(default=255, ge=0, le=255)
+
+    _v = field_validator("color")(_valid_hex)
+
+
 class StyleConfig(BaseModel):
     """Estilo completo do caption. Defaults = visual 'classic' histórico."""
 
@@ -105,7 +117,7 @@ class StyleConfig(BaseModel):
         return FONT_CANDIDATES[self.font]
 
     @classmethod
-    def parse(cls, raw: str | None) -> "StyleConfig":
+    def parse(cls, raw: str | None) -> StyleConfig:
         """De uma string JSON (ou None) pro modelo. None/vazio = classic."""
         if not raw or not raw.strip():
             return cls()

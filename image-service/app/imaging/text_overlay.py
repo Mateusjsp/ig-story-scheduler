@@ -304,6 +304,14 @@ def _render_text_element(base: Image.Image, el: TextElement) -> None:
             [2, 2, lw - 2, lh - 2], radius=int(size * 0.35), fill=(*scrim_rgb, alpha)
         )
 
+    # Highlight (marca-texto): pílula colorida POR LINHA, justa ao texto. Desenhada
+    # antes do texto de cada linha. Cabe na folga do `pad` (hl_pad_x < pad).
+    hl = el.highlight
+    hl_rgb = hex_to_rgb(hl.color) if hl.enabled else (0, 0, 0)
+    hl_pad_x = int(size * 0.28)
+    hl_pad_y = int(line_h * 0.14)
+    hl_radius = int(line_h * 0.3)
+
     ty = pad
     for line in lines:
         tw = measure.textlength(line, font=font)
@@ -313,6 +321,12 @@ def _render_text_element(base: Image.Image, el: TextElement) -> None:
             tx = pad + (block_w - tw)
         else:
             tx = pad + (block_w - tw) / 2.0
+        if hl.enabled and line.strip():
+            ld.rounded_rectangle(
+                [tx - hl_pad_x, ty - hl_pad_y, tx + tw + hl_pad_x, ty + line_h + hl_pad_y],
+                radius=hl_radius,
+                fill=(*hl_rgb, hl.opacity),
+            )
         ld.text(
             (tx, ty),
             line,

@@ -570,8 +570,11 @@ function TextLayer({
   onTextInput: (text: string) => void;
   onEndEdit: () => void;
 }) {
+  // Highlight (por linha) tem prioridade sobre o scrim (caixa do bloco). Quando
+  // ligado, o fundo vai no <span> interno (uma pílula por linha); o scrim fica off.
+  const useHighlight = el.highlight.enabled;
   const scrimBg =
-    el.scrim.enabled
+    el.scrim.enabled && !useHighlight
       ? hexA(el.scrim.color, el.scrim.adaptive ? 0.43 : el.scrim.opacity / 255)
       : "transparent";
   return (
@@ -597,6 +600,20 @@ function TextLayer({
     >
       {editing ? (
         <EditableText initial={el.text} align={el.align} onInput={onTextInput} onEnd={onEndEdit} />
+      ) : useHighlight ? (
+        // box-decoration-break: clone -> cada linha quebrada ganha sua própria pílula,
+        // igual ao render por-linha do Pillow (_render_text_element).
+        <span
+          style={{
+            background: hexA(el.highlight.color, el.highlight.opacity / 255),
+            padding: "0.1em 0.16em",
+            borderRadius: "0.22em",
+            boxDecorationBreak: "clone",
+            WebkitBoxDecorationBreak: "clone",
+          }}
+        >
+          {el.text || " "}
+        </span>
       ) : (
         el.text || " "
       )}
@@ -684,6 +701,24 @@ function TextToolbar({
     onChange({ align: order[(i + 1) % order.length] });
   };
   const alignIcon = el.align === "left" ? "⇤" : el.align === "right" ? "⇥" : "≡";
+  // Fundo cicla: nenhum -> scrim (caixa do bloco) -> highlight (pílula por linha).
+  const bgMode = el.highlight.enabled ? "highlight" : el.scrim.enabled ? "scrim" : "none";
+  const cycleBg = () => {
+    if (bgMode === "none") {
+      onChange({ scrim: { ...el.scrim, enabled: true }, highlight: { ...el.highlight, enabled: false } });
+    } else if (bgMode === "scrim") {
+      // Vira marca-texto: a pílula herda a cor atual do texto e o texto vira tinta
+      // legível sobre ela (evita branco-no-branco), como no IG.
+      onChange({
+        scrim: { ...el.scrim, enabled: false },
+        highlight: { ...el.highlight, enabled: true, color: el.color },
+        color: readableInk(el.color),
+      });
+    } else {
+      onChange({ scrim: { ...el.scrim, enabled: false }, highlight: { ...el.highlight, enabled: false } });
+    }
+  };
+  const bgLabel = bgMode === "highlight" ? "Marca-texto" : bgMode === "scrim" ? "Caixa" : "Fundo";
   return (
     <div
       className="pointer-events-auto absolute left-1/2 top-2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/55 px-1.5 py-1 backdrop-blur"
@@ -697,12 +732,12 @@ function TextToolbar({
       </button>
       <button
         type="button"
-        onClick={() => onChange({ scrim: { ...el.scrim, enabled: !el.scrim.enabled } })}
-        className={`${pillCls} ${el.scrim.enabled ? "ring-1 ring-amber" : ""}`}
-        title="Fundo do texto"
-        aria-pressed={el.scrim.enabled}
+        onClick={cycleBg}
+        className={`${pillCls} ${bgMode !== "none" ? "ring-1 ring-amber" : ""}`}
+        title="Fundo do texto (nenhum · caixa · marca-texto)"
+        aria-pressed={bgMode !== "none"}
       >
-        Fundo
+        {bgLabel}
       </button>
       {editing && (
         <button type="button" onClick={onDone} className={`${pillCls} bg-amber !text-bg`} title="Concluir">
@@ -737,8 +772,16 @@ function SizeSlider({ value, onChange }: { value: number; onChange: (v: number) 
   );
 }
 
-// Paleta rápida de cores no rodapé do palco + custom (spectrum) no fim.
+// Paleta rápida de cores no rodapé do palco + custom (spectrum) no fim. Com
+// marca-texto ligado, a paleta pinta a PÍLULA e auto-contrasta o texto; senão,
+// pinta o texto direto.
 function ColorRow({ el, onChange }: { el: TextElement; onChange: (p: Partial<TextElement>) => void }) {
+  const hl = el.highlight.enabled;
+  const activeColor = (hl ? el.highlight.color : el.color).toUpperCase();
+  const pick = (c: string) =>
+    hl
+      ? onChange({ highlight: { ...el.highlight, color: c }, color: readableInk(c) })
+      : onChange({ color: c });
   return (
     <div
       className="pointer-events-auto absolute inset-x-0 bottom-2 z-30 flex items-center justify-center gap-1.5 px-3"
@@ -749,10 +792,10 @@ function ColorRow({ el, onChange }: { el: TextElement; onChange: (p: Partial<Tex
           <button
             key={c}
             type="button"
-            onClick={() => onChange({ color: c })}
+            onClick={() => pick(c)}
             aria-label={`Cor ${c}`}
             className={`h-6 w-6 shrink-0 rounded-full border transition-transform hover:scale-110 ${
-              el.color.toUpperCase() === c ? "border-amber ring-2 ring-amber" : "border-white/40"
+              activeColor === c ? "border-amber ring-2 ring-amber" : "border-white/40"
             }`}
             style={{ background: c }}
           />
@@ -761,8 +804,8 @@ function ColorRow({ el, onChange }: { el: TextElement; onChange: (p: Partial<Tex
           style={{ background: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }}>
           <input
             type="color"
-            value={el.color}
-            onChange={(e) => onChange({ color: e.target.value.toUpperCase() })}
+            value={activeColor}
+            onChange={(e) => pick(e.target.value.toUpperCase())}
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             aria-label="Cor personalizada"
           />
@@ -869,6 +912,16 @@ function hexA(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
+// Tinta legível sobre uma cor de fundo (marca-texto): preto em fundo claro, branco
+// em fundo escuro. Luminância relativa aproximada (BT.601).
+function readableInk(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#000000" : "#FFFFFF";
+}
+
 const FONTS = Object.keys(FONT_LABELS) as FontKey[];
 const inputCls =
   "w-full rounded-md border border-border bg-surface/60 px-3 py-2 text-sm text-text focus:border-amber focus:outline-none";
@@ -957,6 +1010,22 @@ function ElementPanel({
             {!el.scrim.adaptive && (
               <input type="range" min={0} max={255} value={el.scrim.opacity} onChange={(e) => onChange({ scrim: { ...el.scrim, opacity: Number(e.target.value) } })} className="flex-1 accent-amber" />
             )}
+          </label>
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-2 rounded-md border border-border p-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={el.highlight.enabled} onChange={(e) => onChange({ highlight: { ...el.highlight, enabled: e.target.checked } })} className="accent-amber" />
+          Marca-texto (por linha)
+          {el.highlight.enabled && (
+            <input type="color" value={el.highlight.color} onChange={(e) => onChange({ highlight: { ...el.highlight, color: e.target.value.toUpperCase() } })} className="ml-auto h-7 w-8 rounded border border-border bg-transparent" />
+          )}
+        </label>
+        {el.highlight.enabled && (
+          <label className="flex items-center gap-2 pl-6 text-xs text-text-dim">
+            Opacidade
+            <input type="range" min={0} max={255} value={el.highlight.opacity} onChange={(e) => onChange({ highlight: { ...el.highlight, opacity: Number(e.target.value) } })} className="flex-1 accent-amber" />
           </label>
         )}
       </fieldset>

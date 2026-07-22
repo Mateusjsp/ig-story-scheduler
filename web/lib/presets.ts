@@ -20,6 +20,20 @@ export interface Outline {
   width: number; // 0-20
 }
 
+// Fundo colorido por linha (marca-texto) — visual assinatura do IG. Espelha
+// image-service/app/imaging/style.py::Highlight. Independente do Scrim.
+export interface Highlight {
+  enabled: boolean;
+  color: string; // #RRGGBB
+  opacity: number; // 0-255
+}
+
+export const DEFAULT_HIGHLIGHT: Highlight = {
+  enabled: false,
+  color: "#FFFFFF",
+  opacity: 255,
+};
+
 export interface StyleConfig {
   font: FontKey;
   text_color: string; // #RRGGBB

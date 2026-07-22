@@ -2,8 +2,10 @@
 // O editor produz este doc; o server re-renderiza autoritativo.
 
 import {
+  DEFAULT_HIGHLIGHT,
   DEFAULT_STYLE,
   type FontKey,
+  type Highlight,
   type Outline,
   type Scrim,
 } from "@/lib/presets";
@@ -68,6 +70,7 @@ export interface TextElement {
   size_factor: number; // fração da largura
   scrim: Scrim;
   outline: Outline;
+  highlight: Highlight; // fundo por linha (marca-texto)
 }
 
 export interface StickerElement {
@@ -140,6 +143,7 @@ export function newTextElement(partial: Partial<TextElement> = {}): TextElement 
     size_factor: 0.07,
     scrim: { ...DEFAULT_STYLE.scrim },
     outline: { ...DEFAULT_STYLE.outline },
+    highlight: { ...DEFAULT_HIGHLIGHT },
     ...partial,
   };
 }
@@ -189,6 +193,7 @@ export function docFromLegacy(
         size_factor: s.size_factor,
         scrim: { ...s.scrim },
         outline: { ...s.outline },
+        highlight: { ...DEFAULT_HIGHLIGHT },
         y: 0.5,
       }),
     ],
