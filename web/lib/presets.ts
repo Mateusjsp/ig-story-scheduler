@@ -4,7 +4,7 @@
 // /process. O serviço de imagem valida de novo (Pydantic) — aqui a validação é
 // leve, só pra UX.
 
-export type FontKey = "sans-bold" | "serif" | "condensed" | "mono";
+export type FontKey = "sans-bold" | "serif" | "condensed" | "mono" | "script";
 export type Position = "auto" | "top" | "center" | "bottom";
 
 export interface Scrim {
@@ -62,6 +62,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   serif: "Serif",
   condensed: "Condensada",
   mono: "Mono",
+  script: "Manuscrita",
 };
 
 export const POSITION_LABELS: Record<Position, string> = {
@@ -130,7 +131,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
 ];
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const FONTS = new Set<FontKey>(["sans-bold", "serif", "condensed", "mono"]);
+const FONTS = new Set<FontKey>(["sans-bold", "serif", "condensed", "mono", "script"]);
 const POSITIONS = new Set<Position>(["auto", "top", "center", "bottom"]);
 
 /** Validação leve (o back valida de verdade). Retorna erro legível ou null. */

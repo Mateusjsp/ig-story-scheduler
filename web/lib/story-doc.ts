@@ -127,6 +127,7 @@ export const FONT_CSS: Record<FontKey, string> = {
   serif: "story-serif",
   condensed: "story-condensed",
   mono: "story-mono",
+  script: "story-script",
 };
 
 let _seq = 0;

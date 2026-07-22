@@ -5,8 +5,10 @@ FROM python:3.12-slim
 # Serif-Bold, SansCondensed-Bold e SansMono-Bold. Sem fonte, o overlay cai no
 # ImageFont.load_default() (bitmap ~11px) e o caption fica invisível no Story de
 # 1080px. A imagem slim não traz nenhuma fonte.
+# fonts-pacifico (OFL): fonte "script"/manuscrita com personalidade (estilo IG),
+# em /usr/share/fonts/truetype/pacifico/Pacifico.ttf. Pacote apt = sem binário no repo.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libglib2.0-0 fonts-dejavu \
+    && apt-get install -y --no-install-recommends libglib2.0-0 fonts-dejavu fonts-pacifico \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv

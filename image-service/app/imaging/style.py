@@ -35,9 +35,17 @@ FONT_CANDIDATES: dict[str, list[str]] = {
         "C:/Windows/Fonts/consolab.ttf",
         "/Library/Fonts/Menlo.ttc",
     ],
+    # Manuscrita/casual (personalidade estilo IG). Container: fonts-pacifico (apt).
+    # Fallbacks de dev: Segoe Script (Win) / Noteworthy (mac); se faltar, cai no
+    # load_default como as demais.
+    "script": [
+        "/usr/share/fonts/truetype/pacifico/Pacifico.ttf",
+        "C:/Windows/Fonts/segoesc.ttf",
+        "/System/Library/Fonts/Supplemental/Noteworthy.ttc",
+    ],
 }
 
-FontKey = Literal["sans-bold", "serif", "condensed", "mono"]
+FontKey = Literal["sans-bold", "serif", "condensed", "mono", "script"]
 Position = Literal["auto", "top", "center", "bottom"]
 
 
