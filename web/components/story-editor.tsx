@@ -19,12 +19,17 @@ import { EmojiPicker } from "@/components/emoji-picker";
 // Editor de Story em camadas: fundo (blur-fill aproximado por CSS) + textos e
 // emojis arrastáveis/redimensionáveis/rotacionáveis, ao vivo com os mesmos assets
 // do render. Controlado: recebe `doc` e emite `onChange`. Server re-renderiza no save.
+//
+// UX de digitação mira o Instagram mobile: toca a foto -> cria e edita o texto
+// inline no palco (contentEditable centralizado), toolbar flutuante no topo,
+// slider vertical de tamanho na borda, paleta rápida de cores no rodapé. O painel
+// lateral vira fallback/desktop (ajuste fino), escondido nas larguras de celular.
 
 // patch frouxo: campos de texto ou sticker (merge por id; type nunca é alterado).
 type Patch = Record<string, unknown>;
 
 type Gesture =
-  | { kind: "move"; id: string; ox: number; oy: number; sx: number; sy: number }
+  | { kind: "move"; id: string; ox: number; oy: number; sx: number; sy: number; wasSelected: boolean; moved: boolean }
   | { kind: "rotate"; id: string; cx: number; cy: number; start: number; base: number }
   | { kind: "resize"; id: string; cx: number; cy: number; dist: number; base: number; field: "size_factor" | "w" }
   | { kind: "pan"; sx: number; sy: number; ox: number; oy: number };
@@ -34,6 +39,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const nowMs = () => Date.now();
 let _dupSeq = 0;
 const dupId = (type: string) => `${type}-dup-${(_dupSeq += 1)}`;
+
+// Paleta rápida (tipo IG). Custom fica no <input type=color> ao lado.
+const SWATCHES = [
+  "#FFFFFF", "#000000", "#F0883E", "#FFD400", "#E0492F",
+  "#3897F0", "#22C55E", "#EC4899", "#8B5CF6", "#14B8A6",
+];
 
 export function StoryEditor({
   doc,
@@ -55,12 +66,13 @@ export function StoryEditor({
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // texto em edição inline
   const [pickerOpen, setPickerOpen] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
-  const [editKey, setEditKey] = useState(0); // muda ao pedir edição de texto (duplo-clique)
 
   const selected = doc.elements.find((e) => e.id === selectedId) ?? null;
+  const selectedText = selected?.type === "text" ? selected : null;
   const photo: Photo = doc.photo ?? DEFAULT_PHOTO;
 
   // Undo/redo com coalescência: mudanças a menos de 400ms (arrasto/slider) viram
@@ -122,9 +134,11 @@ export function StoryEditor({
   }
 
   function addText() {
-    const el = newTextElement();
+    // Nasce vazio e já em edição — toca e digita, como no IG.
+    const el = newTextElement({ text: "" });
     commit({ ...doc, elements: [...doc.elements, el] });
     setSelectedId(el.id);
+    setEditingId(el.id);
   }
 
   function addSticker(emoji: string) {
@@ -145,6 +159,16 @@ export function StoryEditor({
   function remove(id: string) {
     commit({ ...doc, elements: doc.elements.filter((e) => e.id !== id) });
     if (selectedId === id) setSelectedId(null);
+    if (editingId === id) setEditingId(null);
+  }
+
+  // Fim da edição inline: texto vazio (só espaços) = descarta o elemento (IG faz igual).
+  function endEdit() {
+    const id = editingId;
+    setEditingId(null);
+    if (!id) return;
+    const el = doc.elements.find((e) => e.id === id);
+    if (el?.type === "text" && !el.text.trim()) remove(id);
   }
 
   function reorder(id: string, dir: 1 | -1) {
@@ -161,10 +185,12 @@ export function StoryEditor({
   }
 
   function onPointerDownBody(e: RPointerEvent, el: Element) {
+    if (editingId === el.id) return; // digitando: deixa o caret trabalhar
     e.stopPropagation();
+    const wasSelected = selectedId === el.id;
     setSelectedId(el.id);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    gesture.current = { kind: "move", id: el.id, ox: el.x, oy: el.y, sx: e.clientX, sy: e.clientY };
+    gesture.current = { kind: "move", id: el.id, ox: el.x, oy: el.y, sx: e.clientX, sy: e.clientY, wasSelected, moved: false };
   }
 
   function onPointerDownRotate(e: RPointerEvent, el: Element) {
@@ -194,6 +220,7 @@ export function StoryEditor({
     if (!g) return;
     const r = rect();
     if (g.kind === "move") {
+      if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 4) g.moved = true;
       let x = clamp(g.ox + (e.clientX - g.sx) / r.width, 0, 1);
       let y = clamp(g.oy + (e.clientY - g.sy) / r.height, 0, 1);
       // snap ao centro com guias (tipo Canva)
@@ -222,23 +249,32 @@ export function StoryEditor({
 
   function onStagePointerDown(e: RPointerEvent) {
     setSelectedId(null);
+    if (editingId) endEdit();
     if (!bgSrc) return; // sem foto: nada pra arrastar
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     gesture.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: photo.offset_x, oy: photo.offset_y };
   }
 
   function onPointerUp() {
+    const g = gesture.current;
     gesture.current = null;
     if (guides.v || guides.h) setGuides({ v: false, h: false });
+    // Toque (sem arrasto) num texto já selecionado -> entra em edição inline (IG).
+    if (g && g.kind === "move" && !g.moved && g.wasSelected) {
+      const el = doc.elements.find((x) => x.id === g.id);
+      if (el?.type === "text") setEditingId(g.id);
+    }
   }
 
   // Atalhos: Delete remove, setas movem (Shift = passo maior), Esc desmarca.
-  // Ignora quando o foco está num campo (pra não atrapalhar digitação no painel).
+  // Ignora quando o foco está num campo OU num texto em edição inline (contentEditable),
+  // pra não sequestrar a digitação.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
-      const inField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      const inField =
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!t?.isContentEditable;
       // Undo/redo (funciona sem seleção; não sequestra digitação em campos).
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !inField) {
         e.preventDefault();
@@ -344,14 +380,17 @@ export function StoryEditor({
                 key={el.id}
                 el={el}
                 selected={el.id === selectedId}
+                editing={el.id === editingId}
                 onBody={(e) => onPointerDownBody(e, el)}
                 onRotate={(e) => onPointerDownRotate(e, el)}
                 onResize={(e) => onPointerDownResize(e, el)}
                 onDelete={() => remove(el.id)}
                 onEdit={() => {
                   setSelectedId(el.id);
-                  setEditKey((k) => k + 1);
+                  setEditingId(el.id);
                 }}
+                onTextInput={(text) => update(el.id, { text })}
+                onEndEdit={endEdit}
               />
             ) : (
               <StickerLayer
@@ -369,13 +408,31 @@ export function StoryEditor({
           {/* guias de centro (aparecem ao arrastar perto do meio) */}
           {guides.v && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-amber/80" />}
           {guides.h && <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-amber/80" />}
+
+          {/* ── overlays flutuantes tipo IG: só quando um texto está ativo ── */}
+          {selectedText && (
+            <>
+              <TextToolbar
+                el={selectedText}
+                editing={editingId === selectedText.id}
+                onChange={(p) => update(selectedText.id, p)}
+                onDone={endEdit}
+              />
+              <SizeSlider
+                value={selectedText.size_factor}
+                onChange={(v) => update(selectedText.id, { size_factor: v })}
+              />
+              <ColorRow el={selectedText} onChange={(p) => update(selectedText.id, p)} />
+            </>
+          )}
         </div>
       </div>
 
-      {/* coluna de controles: foto + ferramentas + propriedades + ajustes do post */}
+      {/* coluna de controles (desktop): foto + ferramentas + propriedades + ajustes do
+          post. Escondida no celular — lá o fluxo é 100% pelos overlays do palco. */}
       <div className="space-y-4">
         {bgSrc && (
-          <div className="space-y-2">
+          <div className="hidden space-y-2 lg:block">
             <div className="flex items-center justify-between">
               <p className="font-mono text-[0.65rem] uppercase tracking-[0.25em] text-text-faint">Foto</p>
               {format && <span className="text-xs text-text-dim">{format}</span>}
@@ -442,17 +499,20 @@ export function StoryEditor({
           )}
         </div>
 
-        {selected?.type === "text" ? (
-          <ElementPanel el={selected} onChange={(p) => update(selected.id, p)} focusSignal={editKey} />
-        ) : selected?.type === "sticker" ? (
-          <StickerPanel el={selected} onChange={(p) => update(selected.id, p)} />
-        ) : (
-          <p className="rounded-xl border border-dashed border-border p-4 text-sm text-text-faint">
-            Toque em <span className="text-amber">+ Texto</span> ou{" "}
-            <span className="text-amber">+ Emoji</span>. Arraste na foto pra posicionar,
-            use as alças pra girar e redimensionar.
-          </p>
-        )}
+        {/* Ajuste fino (desktop): controles detalhados. No celular fica escondido. */}
+        <div className="hidden lg:block">
+          {selected?.type === "text" ? (
+            <ElementPanel el={selected} onChange={(p) => update(selected.id, p)} />
+          ) : selected?.type === "sticker" ? (
+            <StickerPanel el={selected} onChange={(p) => update(selected.id, p)} />
+          ) : (
+            <p className="rounded-xl border border-dashed border-border p-4 text-sm text-text-faint">
+              Toque em <span className="text-amber">+ Texto</span> ou{" "}
+              <span className="text-amber">+ Emoji</span>. Arraste na foto pra posicionar,
+              use as alças pra girar e redimensionar.
+            </p>
+          )}
+        </div>
 
         {footer && <div className="space-y-4 border-t border-border pt-4">{footer}</div>}
       </div>
@@ -474,22 +534,41 @@ function textShadow(el: TextElement): string | undefined {
   ].join(", ");
 }
 
+// Estilo tipográfico partilhado pelo texto estático e pelo contentEditable — mantém
+// o WYSIWYG idêntico ao entrar/sair da edição.
+function textTypography(el: TextElement): React.CSSProperties {
+  return {
+    fontFamily: `"${FONT_CSS[el.font]}", sans-serif`,
+    fontSize: `calc(${el.size_factor} * 100cqw)`,
+    lineHeight: 1.15,
+    color: el.color,
+    textAlign: el.align,
+    textShadow: textShadow(el),
+  };
+}
+
 function TextLayer({
   el,
   selected,
+  editing,
   onBody,
   onRotate,
   onResize,
   onDelete,
   onEdit,
+  onTextInput,
+  onEndEdit,
 }: {
   el: TextElement;
   selected: boolean;
+  editing: boolean;
   onBody: (e: RPointerEvent) => void;
   onRotate: (e: RPointerEvent) => void;
   onResize: (e: RPointerEvent) => void;
   onDelete: () => void;
   onEdit: () => void;
+  onTextInput: (text: string) => void;
+  onEndEdit: () => void;
 }) {
   const scrimBg =
     el.scrim.enabled
@@ -505,24 +584,190 @@ function TextLayer({
         top: `${el.y * 100}%`,
         width: `${el.w * 100}%`,
         transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
-        fontFamily: `"${FONT_CSS[el.font]}", sans-serif`,
-        fontSize: `calc(${el.size_factor} * 100cqw)`,
-        lineHeight: 1.15,
-        color: el.color,
-        textAlign: el.align,
-        textShadow: textShadow(el),
+        ...textTypography(el),
         background: scrimBg,
         borderRadius: "0.4em",
         padding: "0.3em 0.5em",
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
-        cursor: "move",
+        cursor: editing ? "text" : "move",
         outline: selected ? "2px solid rgba(240,136,62,0.95)" : "none",
         outlineOffset: 2,
       }}
     >
-      {el.text || " "}
-      {selected && <Handles onRotate={onRotate} onResize={onResize} onDelete={onDelete} />}
+      {editing ? (
+        <EditableText initial={el.text} align={el.align} onInput={onTextInput} onEnd={onEndEdit} />
+      ) : (
+        el.text || " "
+      )}
+      {selected && !editing && <Handles onRotate={onRotate} onResize={onResize} onDelete={onDelete} />}
+    </div>
+  );
+}
+
+// contentEditable não-controlado: injeta o texto inicial e o caret no fim uma vez ao
+// montar, depois só *lê* no onInput (nunca reescreve o DOM) — evita o caret pular.
+function EditableText({
+  initial,
+  align,
+  onInput,
+  onEnd,
+}: {
+  initial: string;
+  align: TextElement["align"];
+  onInput: (text: string) => void;
+  onEnd: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.textContent = initial;
+    node.focus();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    range.collapse(false); // caret no fim
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- injeta só no mount da edição
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-label="Editar texto"
+      onPointerDown={(e) => e.stopPropagation()}
+      onInput={(e) => onInput((e.currentTarget as HTMLDivElement).innerText)}
+      onBlur={onEnd}
+      onKeyDown={(e) => {
+        // Esc encerra; Enter cria linha (whiteSpace pre-wrap já cuida da quebra).
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onEnd();
+        }
+        e.stopPropagation();
+      }}
+      style={{
+        outline: "none",
+        minWidth: "1ch",
+        minHeight: "1em",
+        textAlign: align,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        caretColor: "currentColor",
+      }}
+    />
+  );
+}
+
+// Toolbar flutuante no topo do palco (tipo IG): fonte, alinhamento, fundo, + Concluir.
+function TextToolbar({
+  el,
+  editing,
+  onChange,
+  onDone,
+}: {
+  el: TextElement;
+  editing: boolean;
+  onChange: (p: Partial<TextElement>) => void;
+  onDone: () => void;
+}) {
+  const nextFont = () => {
+    const i = FONTS.indexOf(el.font);
+    onChange({ font: FONTS[(i + 1) % FONTS.length] });
+  };
+  const cycleAlign = () => {
+    const order: TextElement["align"][] = ["left", "center", "right"];
+    const i = order.indexOf(el.align);
+    onChange({ align: order[(i + 1) % order.length] });
+  };
+  const alignIcon = el.align === "left" ? "⇤" : el.align === "right" ? "⇥" : "≡";
+  return (
+    <div
+      className="pointer-events-auto absolute left-1/2 top-2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/55 px-1.5 py-1 backdrop-blur"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button type="button" onClick={nextFont} className={pillCls} title="Trocar fonte">
+        {FONT_LABELS[el.font]}
+      </button>
+      <button type="button" onClick={cycleAlign} className={pillCls} title="Alinhamento" aria-label="Alinhamento">
+        {alignIcon}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ scrim: { ...el.scrim, enabled: !el.scrim.enabled } })}
+        className={`${pillCls} ${el.scrim.enabled ? "ring-1 ring-amber" : ""}`}
+        title="Fundo do texto"
+        aria-pressed={el.scrim.enabled}
+      >
+        Fundo
+      </button>
+      {editing && (
+        <button type="button" onClick={onDone} className={`${pillCls} bg-amber !text-bg`} title="Concluir">
+          Concluir
+        </button>
+      )}
+    </div>
+  );
+}
+
+const pillCls =
+  "rounded-full px-2.5 py-1 text-xs text-white/90 transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber";
+
+// Slider vertical de tamanho na borda esquerda (tipo IG). Rotacionado -90°.
+function SizeSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div
+      className="pointer-events-auto absolute left-1 top-1/2 z-30 -translate-y-1/2"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <input
+        type="range"
+        min={0.03}
+        max={0.16}
+        step={0.005}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Tamanho do texto"
+        className="h-1.5 w-32 origin-center -rotate-90 cursor-pointer accent-amber"
+      />
+    </div>
+  );
+}
+
+// Paleta rápida de cores no rodapé do palco + custom (spectrum) no fim.
+function ColorRow({ el, onChange }: { el: TextElement; onChange: (p: Partial<TextElement>) => void }) {
+  return (
+    <div
+      className="pointer-events-auto absolute inset-x-0 bottom-2 z-30 flex items-center justify-center gap-1.5 px-3"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex max-w-full items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-black/55 px-2 py-1.5 backdrop-blur">
+        {SWATCHES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange({ color: c })}
+            aria-label={`Cor ${c}`}
+            className={`h-6 w-6 shrink-0 rounded-full border transition-transform hover:scale-110 ${
+              el.color.toUpperCase() === c ? "border-amber ring-2 ring-amber" : "border-white/40"
+            }`}
+            style={{ background: c }}
+          />
+        ))}
+        <label className="relative h-6 w-6 shrink-0 cursor-pointer rounded-full border border-white/40" title="Cor personalizada"
+          style={{ background: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }}>
+          <input
+            type="color"
+            value={el.color}
+            onChange={(e) => onChange({ color: e.target.value.toUpperCase() })}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label="Cor personalizada"
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -657,24 +902,13 @@ function StickerPanel({
 function ElementPanel({
   el,
   onChange,
-  focusSignal,
 }: {
   el: TextElement;
   onChange: (p: Partial<TextElement>) => void;
-  focusSignal: number;
 }) {
-  const textRef = useRef<HTMLTextAreaElement>(null);
-  // Duplo-clique no texto (focusSignal muda) -> foca e seleciona pra editar já.
-  useEffect(() => {
-    if (focusSignal > 0) {
-      textRef.current?.focus();
-      textRef.current?.select();
-    }
-  }, [focusSignal]);
   return (
     <div className="space-y-3 rounded-xl border border-border bg-surface/30 p-4">
       <textarea
-        ref={textRef}
         value={el.text}
         onChange={(e) => onChange({ text: e.target.value })}
         rows={2}
