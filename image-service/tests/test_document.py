@@ -164,6 +164,34 @@ def test_highlight_changes_render():
     assert not np.array_equal(np.asarray(plain), np.asarray(marked))
 
 
+def test_glow_parses_and_defaults_off():
+    doc = StoryDoc.model_validate({"elements": [{"text": "x"}]})
+    assert doc.elements[0].glow.enabled is False
+    doc2 = StoryDoc.model_validate(
+        {"elements": [{"text": "x", "glow": {"enabled": True, "color": "#00FFAA", "radius": 20}}]}
+    )
+    assert doc2.elements[0].glow.enabled is True
+    assert doc2.elements[0].glow.radius == 20
+
+
+def test_glow_changes_render_and_spreads():
+    base = _img()
+    plain = render_document(
+        base.copy(), StoryDoc.model_validate({"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1}]})
+    )
+    neon = render_document(
+        base.copy(),
+        StoryDoc.model_validate(
+            {"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1,
+                           "glow": {"enabled": True, "color": "#00FFAA", "radius": 30}}]}
+        ),
+    )
+    # O halo borrado muda mais pixels (área maior) que o texto nítido sozinho.
+    changed_plain = (np.abs(np.asarray(base, int) - np.asarray(plain, int)).sum(axis=2) > 0).sum()
+    changed_neon = (np.abs(np.asarray(base, int) - np.asarray(neon, int)).sum(axis=2) > 0).sum()
+    assert changed_neon > changed_plain
+
+
 def test_two_elements_draw_in_different_places():
     base = _img()
     doc = StoryDoc.model_validate(

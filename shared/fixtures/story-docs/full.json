@@ -16,7 +16,8 @@
       "size_factor": 0.07,
       "scrim": { "enabled": false, "color": "#000000", "opacity": 128, "adaptive": false },
       "outline": { "enabled": true, "color": "#000000", "width": 3 },
-      "highlight": { "enabled": true, "color": "#FFD400", "opacity": 230 }
+      "highlight": { "enabled": true, "color": "#FFD400", "opacity": 230 },
+      "glow": { "enabled": false, "color": "#F0883E", "radius": 12 }
     },
     {
       "id": "s1",

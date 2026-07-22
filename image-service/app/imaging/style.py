@@ -101,6 +101,18 @@ class Highlight(BaseModel):
     _v = field_validator("color")(_valid_hex)
 
 
+class Glow(BaseModel):
+    """Brilho/neon: halo colorido borrado sob o texto. `radius` é relativo ao tamanho
+    da fonte (blur = size * radius/100), então o efeito escala com a resolução —
+    preview (720px) e saída (1080px) batem. Default desligado (retrocompat)."""
+
+    enabled: bool = False
+    color: str = "#F0883E"
+    radius: int = Field(default=12, ge=0, le=40)
+
+    _v = field_validator("color")(_valid_hex)
+
+
 class StyleConfig(BaseModel):
     """Estilo completo do caption. Defaults = visual 'classic' histórico."""
 

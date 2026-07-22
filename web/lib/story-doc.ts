@@ -2,9 +2,11 @@
 // O editor produz este doc; o server re-renderiza autoritativo.
 
 import {
+  DEFAULT_GLOW,
   DEFAULT_HIGHLIGHT,
   DEFAULT_STYLE,
   type FontKey,
+  type Glow,
   type Highlight,
   type Outline,
   type Scrim,
@@ -71,6 +73,7 @@ export interface TextElement {
   scrim: Scrim;
   outline: Outline;
   highlight: Highlight; // fundo por linha (marca-texto)
+  glow: Glow; // brilho/neon
 }
 
 export interface StickerElement {
@@ -144,6 +147,7 @@ export function newTextElement(partial: Partial<TextElement> = {}): TextElement 
     scrim: { ...DEFAULT_STYLE.scrim },
     outline: { ...DEFAULT_STYLE.outline },
     highlight: { ...DEFAULT_HIGHLIGHT },
+    glow: { ...DEFAULT_GLOW },
     ...partial,
   };
 }
@@ -194,6 +198,7 @@ export function docFromLegacy(
         scrim: { ...s.scrim },
         outline: { ...s.outline },
         highlight: { ...DEFAULT_HIGHLIGHT },
+        glow: { ...DEFAULT_GLOW },
         y: 0.5,
       }),
     ],

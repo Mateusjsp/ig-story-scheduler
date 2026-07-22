@@ -524,14 +524,24 @@ const btnCls =
   "rounded-full border border-border px-3 py-1.5 text-xs text-text-dim transition-colors hover:border-amber hover:text-amber focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg";
 
 function textShadow(el: TextElement): string | undefined {
-  if (!el.outline.enabled || el.outline.width <= 0) return undefined;
-  const w = el.outline.width;
-  const c = el.outline.color;
-  // aproxima o stroke do Pillow com múltiplas sombras
-  return [
-    `${w}px 0 ${c}`, `-${w}px 0 ${c}`, `0 ${w}px ${c}`, `0 -${w}px ${c}`,
-    `${w}px ${w}px ${c}`, `-${w}px -${w}px ${c}`, `${w}px -${w}px ${c}`, `-${w}px ${w}px ${c}`,
-  ].join(", ");
+  const parts: string[] = [];
+  if (el.outline.enabled && el.outline.width > 0) {
+    const w = el.outline.width;
+    const c = el.outline.color;
+    // aproxima o stroke do Pillow com múltiplas sombras
+    parts.push(
+      `${w}px 0 ${c}`, `-${w}px 0 ${c}`, `0 ${w}px ${c}`, `0 -${w}px ${c}`,
+      `${w}px ${w}px ${c}`, `-${w}px -${w}px ${c}`, `${w}px -${w}px ${c}`, `-${w}px ${w}px ${c}`,
+    );
+  }
+  if (el.glow.enabled && el.glow.radius > 0) {
+    // Glow em `em` -> escala com a fonte, batendo com o Pillow (blur = size*radius/100).
+    // Camadas empilhadas dão a intensidade do neon.
+    const c = el.glow.color;
+    const r = el.glow.radius / 100;
+    parts.push(`0 0 ${r}em ${c}`, `0 0 ${(r * 2).toFixed(3)}em ${c}`, `0 0 ${(r * 3).toFixed(3)}em ${c}`);
+  }
+  return parts.length ? parts.join(", ") : undefined;
 }
 
 // Estilo tipográfico partilhado pelo texto estático e pelo contentEditable — mantém
@@ -738,6 +748,21 @@ function TextToolbar({
         aria-pressed={bgMode !== "none"}
       >
         {bgLabel}
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onChange({
+            glow: el.glow.enabled
+              ? { ...el.glow, enabled: false }
+              : { ...el.glow, enabled: true, color: el.color }, // neon herda a cor do texto
+          })
+        }
+        className={`${pillCls} ${el.glow.enabled ? "ring-1 ring-amber" : ""}`}
+        title="Brilho neon"
+        aria-pressed={el.glow.enabled}
+      >
+        Neon
       </button>
       {editing && (
         <button type="button" onClick={onDone} className={`${pillCls} bg-amber !text-bg`} title="Concluir">
@@ -1042,6 +1067,22 @@ function ElementPanel({
           <label className="flex items-center gap-2 pl-6 text-xs text-text-dim">
             Espessura
             <input type="range" min={0} max={12} value={el.outline.width} onChange={(e) => onChange({ outline: { ...el.outline, width: Number(e.target.value) } })} className="flex-1 accent-amber" />
+          </label>
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-2 rounded-md border border-border p-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={el.glow.enabled} onChange={(e) => onChange({ glow: { ...el.glow, enabled: e.target.checked } })} className="accent-amber" />
+          Neon (brilho)
+          {el.glow.enabled && (
+            <input type="color" value={el.glow.color} onChange={(e) => onChange({ glow: { ...el.glow, color: e.target.value.toUpperCase() } })} className="ml-auto h-7 w-8 rounded border border-border bg-transparent" />
+          )}
+        </label>
+        {el.glow.enabled && (
+          <label className="flex items-center gap-2 pl-6 text-xs text-text-dim">
+            Intensidade
+            <input type="range" min={0} max={40} value={el.glow.radius} onChange={(e) => onChange({ glow: { ...el.glow, radius: Number(e.target.value) } })} className="flex-1 accent-amber" />
           </label>
         )}
       </fieldset>

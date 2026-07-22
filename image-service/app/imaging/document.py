@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.imaging.style import FONT_CANDIDATES, FontKey, Highlight, Outline, Scrim, _valid_hex
+from app.imaging.style import FONT_CANDIDATES, FontKey, Glow, Highlight, Outline, Scrim, _valid_hex
 
 Align = Literal["left", "center", "right"]
 
@@ -33,6 +33,7 @@ class TextElement(BaseModel):
     scrim: Scrim = Field(default_factory=Scrim)
     outline: Outline = Field(default_factory=Outline)
     highlight: Highlight = Field(default_factory=Highlight)
+    glow: Glow = Field(default_factory=Glow)
 
     _v = field_validator("color")(_valid_hex)
 

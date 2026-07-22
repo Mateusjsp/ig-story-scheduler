@@ -34,6 +34,20 @@ export const DEFAULT_HIGHLIGHT: Highlight = {
   opacity: 255,
 };
 
+// Brilho/neon: halo colorido borrado sob o texto. `radius` relativo ao tamanho da
+// fonte (0-40). Espelha image-service/app/imaging/style.py::Glow.
+export interface Glow {
+  enabled: boolean;
+  color: string; // #RRGGBB
+  radius: number; // 0-40
+}
+
+export const DEFAULT_GLOW: Glow = {
+  enabled: false,
+  color: "#F0883E",
+  radius: 12,
+};
+
 export interface StyleConfig {
   font: FontKey;
   text_color: string; // #RRGGBB
