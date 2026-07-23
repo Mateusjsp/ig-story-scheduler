@@ -123,7 +123,7 @@ def _publish_one(sb, post: dict) -> None:
             return
         media = (
             sb.table("media")
-            .select("processed_url, feed_caption")
+            .select("processed_url, feed_caption, user_tags")
             .eq("id", post["media_id"])
             .single()
             .execute()
@@ -149,14 +149,19 @@ def _publish_one(sb, post: dict) -> None:
         # Heartbeat: renova updated_at antes de publicar, pra requeue_stuck não
         # "resgatar" este post enquanto os anteriores do lote ainda publicam.
         sb.table("posts").update({"updated_at": _now().isoformat()}).eq("id", pid).execute()
+        # Marcações de pessoas (@) — enviadas à Meta como user_tags. Vale pra feed
+        # e story; lista vazia/ausente = sem marcação.
+        user_tags = (media or {}).get("user_tags") or None
         # Destino define o container da Meta: feed = foto no perfil (com legenda de
         # texto real), story = tela cheia 24h. Default 'story' (posts antigos).
         if post.get("target") == "feed":
             ig_media_id = publisher.publish_feed(
-                image_url, caption=(media or {}).get("feed_caption")
+                image_url,
+                caption=(media or {}).get("feed_caption"),
+                user_tags=user_tags,
             )
         else:
-            ig_media_id = publisher.publish_story(image_url)
+            ig_media_id = publisher.publish_story(image_url, user_tags=user_tags)
         _mark_published(sb, pid, ig_media_id)
         log.info("post %s publicado (%s)", pid, ig_media_id)
     except PublishedButNotRecorded as exc:

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStyle, validateStyle, type StyleConfig } from "@/lib/presets";
 import { docCaption, TARGETS, type StoryDoc } from "@/lib/story-doc";
+import { validateUserTags, type UserTag } from "@/lib/mentions";
 
 // PUT    /api/schedule/:id  -> edita um post da fila (reagenda, troca conta,
 //                             edita texto/estilo reprocessando, reenfileira)
@@ -18,6 +19,7 @@ type MediaRow = {
   original_path: string | null;
   processed_path: string | null;
   feed_caption: string | null;
+  user_tags: UserTag[] | null;
 };
 
 export async function PUT(
@@ -36,7 +38,7 @@ export async function PUT(
 
   const { data: post, error: pErr } = await supabase
     .from("posts")
-    .select("id, status, account_id, media_id, media:media_id(id, caption, style, doc, original_path, processed_path, feed_caption)")
+    .select("id, status, account_id, media_id, media:media_id(id, caption, style, doc, original_path, processed_path, feed_caption, user_tags)")
     .eq("id", id)
     .single();
   if (pErr || !post) return NextResponse.json({ error: "post não encontrado" }, { status: 404 });
@@ -131,6 +133,20 @@ export async function PUT(
       .update({ feed_caption: body.feed_caption || null })
       .eq("id", media.id);
     if (fcErr) return NextResponse.json({ error: fcErr.message }, { status: 400 });
+  }
+
+  // ---- marcações de pessoas (@) — campo da API, não exige re-render ----
+  if (Array.isArray(body.user_tags)) {
+    const tags = body.user_tags as UserTag[];
+    const invalid = validateUserTags(tags);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
+    if (JSON.stringify(tags) !== JSON.stringify(media.user_tags ?? [])) {
+      const { error: utErr } = await supabase
+        .from("media")
+        .update({ user_tags: tags })
+        .eq("id", media.id);
+      if (utErr) return NextResponse.json({ error: utErr.message }, { status: 400 });
+    }
   }
 
   // ---- update do post (reagendar, conta, reenfileirar) ----

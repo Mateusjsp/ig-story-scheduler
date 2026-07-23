@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { StoryEditor } from "@/components/story-editor";
 import { TARGETS, type StoryDoc, type Target } from "@/lib/story-doc";
+import { type UserTag } from "@/lib/mentions";
 
 type Account = { id: string; label: string };
 
@@ -18,6 +19,8 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
   // a legenda de texto real.
   const [target, setTarget] = useState<Target>("story");
   const [feedCaption, setFeedCaption] = useState("");
+  // Marcações de pessoas (@) — vale pra story e feed (Content Publishing user_tags).
+  const [mentions, setMentions] = useState<UserTag[]>([]);
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
@@ -110,6 +113,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
       fd.append("doc", JSON.stringify(doc));
       fd.append("target", target);
       if (meta.isFeed && feedCaption.trim()) fd.append("feed_caption", feedCaption);
+      if (mentions.length) fd.append("user_tags", JSON.stringify(mentions));
       if (immediate) fd.append("now", "1");
       // `when` vem do datetime-local (horário local). Converte pra ISO (UTC).
       else fd.append("scheduled_at", new Date(when).toISOString());
@@ -151,6 +155,8 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         bgSrc={bgUrl}
         aspectW={meta.w}
         aspectH={meta.h}
+        mentions={mentions}
+        onMentionsChange={setMentions}
         footer={
           <>
             <div className="space-y-2">

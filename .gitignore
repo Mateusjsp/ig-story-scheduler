@@ -20,3 +20,5 @@ web/.env.local
 
 # Build/sistema
 .DS_Store
+
+.vercel

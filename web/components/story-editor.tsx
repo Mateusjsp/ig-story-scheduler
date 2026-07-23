@@ -14,6 +14,7 @@ import {
   type TextElement,
 } from "@/lib/story-doc";
 import { FONT_LABELS, type FontKey } from "@/lib/presets";
+import { MAX_USER_TAGS, newUserTag, type UserTag } from "@/lib/mentions";
 import { EmojiPicker } from "@/components/emoji-picker";
 
 // Editor de Story em camadas: fundo (blur-fill aproximado por CSS) + textos e
@@ -53,6 +54,8 @@ export function StoryEditor({
   footer,
   aspectW = 9,
   aspectH = 16,
+  mentions = [],
+  onMentionsChange,
 }: {
   doc: StoryDoc;
   onChange: (d: StoryDoc) => void;
@@ -62,12 +65,17 @@ export function StoryEditor({
   // normalizadas, então só a moldura muda — posições dos elementos não.
   aspectW?: number;
   aspectH?: number;
+  // Marcações de pessoas (@) — metadata de publicação, não vai pro render. Quando
+  // onMentionsChange é passado, o editor mostra os pins arrastáveis + botão "@ Marcar".
+  mentions?: UserTag[];
+  onMentionsChange?: (m: UserTag[]) => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // texto em edição inline
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [tagDraft, setTagDraft] = useState<string | null>(null); // null = fechado; string = input aberto
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
 
@@ -169,6 +177,25 @@ export function StoryEditor({
     if (!id) return;
     const el = doc.elements.find((e) => e.id === id);
     if (el?.type === "text" && !el.text.trim()) remove(id);
+  }
+
+  // ── marcações de pessoas (@) ──
+  function commitTag() {
+    const draft = tagDraft ?? "";
+    setTagDraft(null);
+    if (!onMentionsChange || !draft.trim()) return;
+    if (mentions.length >= MAX_USER_TAGS) return;
+    const t = newUserTag(draft, 0.5, 0.5);
+    if (!t || mentions.some((m) => m.username === t.username)) return; // inválido ou repetido
+    onMentionsChange([...mentions, t]);
+  }
+
+  function moveMention(i: number, x: number, y: number) {
+    onMentionsChange?.(mentions.map((m, j) => (j === i ? { ...m, x, y } : m)));
+  }
+
+  function removeMention(i: number) {
+    onMentionsChange?.(mentions.filter((_, j) => j !== i));
   }
 
   function reorder(id: string, dir: 1 | -1) {
@@ -405,6 +432,18 @@ export function StoryEditor({
             ),
           )}
 
+          {/* pins de marcação (@) — arrastáveis; só no modo editor (onMentionsChange) */}
+          {onMentionsChange &&
+            mentions.map((m, i) => (
+              <MentionPin
+                key={m.username}
+                tag={m}
+                stageRef={stageRef}
+                onMove={(x, y) => moveMention(i, x, y)}
+                onRemove={() => removeMention(i)}
+              />
+            ))}
+
           {/* guias de centro (aparecem ao arrastar perto do meio) */}
           {guides.v && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-amber/80" />}
           {guides.h && <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-amber/80" />}
@@ -485,6 +524,36 @@ export function StoryEditor({
           <span className="mx-1 w-px self-stretch bg-border" aria-hidden />
           <button type="button" onClick={addText} className={btnCls}>+ Texto</button>
           <button type="button" onClick={() => setPickerOpen((v) => !v)} className={btnCls}>+ Emoji</button>
+          {onMentionsChange &&
+            (tagDraft === null ? (
+              <button
+                type="button"
+                onClick={() => setTagDraft("")}
+                disabled={mentions.length >= MAX_USER_TAGS}
+                className={`${btnCls} disabled:opacity-40`}
+                title="Marcar pessoa (@)"
+              >
+                @ Marcar
+              </button>
+            ) : (
+              <input
+                autoFocus
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onBlur={commitTag}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitTag();
+                  } else if (e.key === "Escape") {
+                    setTagDraft(null);
+                  }
+                }}
+                placeholder="@usuário"
+                aria-label="Usuário pra marcar"
+                className="w-32 rounded-full border border-amber bg-surface/60 px-3 py-1.5 text-xs text-text focus:outline-none"
+              />
+            ))}
           {selected && (
             <>
               <button type="button" onClick={() => duplicate(selected.id)} className={btnCls}>Duplicar</button>
@@ -836,6 +905,64 @@ function ColorRow({ el, onChange }: { el: TextElement; onChange: (p: Partial<Tex
           />
         </label>
       </div>
+    </div>
+  );
+}
+
+// Pin de marcação (@) — arrastável, com seu próprio drag (isolado do gesture ref
+// principal). Coordena em fração 0..1 sobre o palco. Visual de "etiqueta" branca
+// pra deixar claro que é metadata, não texto renderizado.
+function MentionPin({
+  tag,
+  stageRef,
+  onMove,
+  onRemove,
+}: {
+  tag: UserTag;
+  stageRef: React.RefObject<HTMLDivElement | null>;
+  onMove: (x: number, y: number) => void;
+  onRemove: () => void;
+}) {
+  const dragging = useRef(false);
+  return (
+    <div
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        dragging.current = true;
+      }}
+      onPointerMove={(e) => {
+        if (!dragging.current) return;
+        const r = stageRef.current?.getBoundingClientRect();
+        if (!r) return;
+        onMove(clamp((e.clientX - r.left) / r.width, 0, 1), clamp((e.clientY - r.top) / r.height, 0, 1));
+      }}
+      onPointerUp={() => {
+        dragging.current = false;
+      }}
+      style={{
+        position: "absolute",
+        left: `${tag.x * 100}%`,
+        top: `${tag.y * 100}%`,
+        transform: "translate(-50%, -50%)",
+        touchAction: "none",
+      }}
+      className="z-20 flex cursor-move items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-xs font-medium text-black shadow-md"
+    >
+      <span aria-hidden>@</span>
+      {tag.username}
+      <span
+        role="button"
+        aria-label={`Remover @${tag.username}`}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onRemove();
+        }}
+        className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/15 text-[0.7rem] leading-none hover:bg-black/30"
+      >
+        ×
+      </span>
     </div>
   );
 }

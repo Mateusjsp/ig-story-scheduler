@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { docCaption, TARGETS, type StoryDoc, type Target } from "@/lib/story-doc";
+import { validateUserTags, type UserTag } from "@/lib/mentions";
 
 // Trata a imagem (image-service /process -> URL pública) e cria media + post agendado.
 export async function POST(request: NextRequest) {
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest) {
   const meta = TARGETS[target];
   // Legenda de texto real (só feed).
   const feedCaption = meta.isFeed ? (form.get("feed_caption") as string) || null : null;
+  // Marcações de pessoas (@) — JSON [{username,x,y}]. Vale pra feed e story.
+  const userTagsRaw = (form.get("user_tags") as string) || null;
   const scheduledAt = form.get("scheduled_at") as string | null;
   // "Postar agora": enfileira com scheduled_at = agora; o scheduler publica no
   // próximo ciclo (~1 min), reusando o mesmo caminho atômico do agendamento.
@@ -60,6 +63,16 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "style inválido (JSON malformado)" }, { status: 400 });
     }
+  }
+  let userTags: UserTag[] = [];
+  if (userTagsRaw) {
+    try {
+      userTags = JSON.parse(userTagsRaw) as UserTag[];
+    } catch {
+      return NextResponse.json({ error: "marcações inválidas (JSON malformado)" }, { status: 400 });
+    }
+    const invalid = validateUserTags(userTags);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
   }
 
   let scheduledDate: Date;
@@ -137,6 +150,7 @@ export async function POST(request: NextRequest) {
       width: processed.width,
       height: processed.height,
       feed_caption: feedCaption,
+      user_tags: userTags,
       aspect: meta.aspectLabel,
       status: "processed",
     })

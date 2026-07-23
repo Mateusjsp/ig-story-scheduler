@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PrimaryButton, Badge } from "@/components/ui";
 import { StoryEditor } from "@/components/story-editor";
 import { TARGETS, targetFromAspect, type StoryDoc } from "@/lib/story-doc";
+import { type UserTag } from "@/lib/mentions";
 
 type Post = {
   id: string;
@@ -17,6 +18,7 @@ type Post = {
   has_original: boolean;
   aspect: string | null;
   feed_caption: string | null;
+  user_tags: UserTag[];
 };
 type Account = { id: string; label: string };
 
@@ -33,6 +35,7 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
   const [when, setWhen] = useState(toLocalInput(post.scheduled_at));
   const [accountId, setAccountId] = useState(post.account_id);
   const [feedCaption, setFeedCaption] = useState(post.feed_caption ?? "");
+  const [mentions, setMentions] = useState<UserTag[]>(post.user_tags ?? []);
   const [busy, setBusy] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -55,6 +58,9 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
       if (body.doc !== undefined) body.target = target;
       if (meta.isFeed && feedCaption !== (post.feed_caption ?? "")) {
         body.feed_caption = feedCaption;
+      }
+      if (JSON.stringify(mentions) !== JSON.stringify(post.user_tags ?? [])) {
+        body.user_tags = mentions;
       }
       if (isFailed) body.reenqueue = true;
 
@@ -117,6 +123,8 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
         bgSrc={post.bg_url}
         aspectW={meta.w}
         aspectH={meta.h}
+        mentions={mentions}
+        onMentionsChange={setMentions}
         footer={
           <>
             {meta.isFeed && (
