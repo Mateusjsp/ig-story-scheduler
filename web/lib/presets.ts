@@ -4,7 +4,7 @@
 // /process. O serviço de imagem valida de novo (Pydantic) — aqui a validação é
 // leve, só pra UX.
 
-export type FontKey = "sans-bold" | "serif" | "condensed" | "mono";
+export type FontKey = "sans-bold" | "serif" | "condensed" | "mono" | "script";
 export type Position = "auto" | "top" | "center" | "bottom";
 
 export interface Scrim {
@@ -20,6 +20,34 @@ export interface Outline {
   width: number; // 0-20
 }
 
+// Fundo colorido por linha (marca-texto) — visual assinatura do IG. Espelha
+// image-service/app/imaging/style.py::Highlight. Independente do Scrim.
+export interface Highlight {
+  enabled: boolean;
+  color: string; // #RRGGBB
+  opacity: number; // 0-255
+}
+
+export const DEFAULT_HIGHLIGHT: Highlight = {
+  enabled: false,
+  color: "#FFFFFF",
+  opacity: 255,
+};
+
+// Brilho/neon: halo colorido borrado sob o texto. `radius` relativo ao tamanho da
+// fonte (0-40). Espelha image-service/app/imaging/style.py::Glow.
+export interface Glow {
+  enabled: boolean;
+  color: string; // #RRGGBB
+  radius: number; // 0-40
+}
+
+export const DEFAULT_GLOW: Glow = {
+  enabled: false,
+  color: "#F0883E",
+  radius: 12,
+};
+
 export interface StyleConfig {
   font: FontKey;
   text_color: string; // #RRGGBB
@@ -34,6 +62,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   serif: "Serif",
   condensed: "Condensada",
   mono: "Mono",
+  script: "Manuscrita",
 };
 
 export const POSITION_LABELS: Record<Position, string> = {
@@ -102,6 +131,8 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
 ];
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+const FONTS = new Set<FontKey>(["sans-bold", "serif", "condensed", "mono", "script"]);
+const POSITIONS = new Set<Position>(["auto", "top", "center", "bottom"]);
 
 /** Validação leve (o back valida de verdade). Retorna erro legível ou null. */
 export function validateStyle(s: StyleConfig): string | null {
@@ -111,14 +142,19 @@ export function validateStyle(s: StyleConfig): string | null {
   if (s.scrim.opacity < 0 || s.scrim.opacity > 255) return "Opacidade fora de 0–255";
   if (s.outline.width < 0 || s.outline.width > 20) return "Contorno fora de 0–20";
   if (s.size_factor <= 0 || s.size_factor > 0.2) return "Tamanho fora do intervalo";
+  if (!FONTS.has(s.font)) return "Fonte inválida";
+  if (!POSITIONS.has(s.position)) return "Posição inválida";
   return null;
 }
 
-/** Preenche faltantes com o default — tolera config vinda do banco/versão antiga. */
+/** Preenche faltantes com o default — tolera config vinda do banco/versão antiga.
+ *  Constrói por allowlist de campos: chaves desconhecidas do `raw` são descartadas. */
 export function normalizeStyle(raw: Partial<StyleConfig> | null | undefined): StyleConfig {
   return {
-    ...DEFAULT_STYLE,
-    ...raw,
+    font: raw?.font ?? DEFAULT_STYLE.font,
+    text_color: raw?.text_color ?? DEFAULT_STYLE.text_color,
+    position: raw?.position ?? DEFAULT_STYLE.position,
+    size_factor: raw?.size_factor ?? DEFAULT_STYLE.size_factor,
     scrim: { ...DEFAULT_STYLE.scrim, ...raw?.scrim },
     outline: { ...DEFAULT_STYLE.outline, ...raw?.outline },
   };

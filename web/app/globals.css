@@ -22,6 +22,11 @@
   src: url("/fonts/mono") format("truetype");
   font-display: swap;
 }
+@font-face {
+  font-family: "story-script";
+  src: url("/fonts/script") format("truetype");
+  font-display: swap;
+}
 
 /* ============================================================
    Darkroom — sistema visual (câmara escura de revelação)

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "photo": { "scale": 1.6, "offset_x": 0.1, "offset_y": -0.2 },
+  "elements": [
+    {
+      "id": "t1",
+      "type": "text",
+      "text": "Olá mundo",
+      "x": 0.5,
+      "y": 0.4,
+      "w": 0.8,
+      "rotation": 15,
+      "align": "center",
+      "font": "sans-bold",
+      "color": "#FFFFFF",
+      "size_factor": 0.07,
+      "scrim": { "enabled": false, "color": "#000000", "opacity": 128, "adaptive": false },
+      "outline": { "enabled": true, "color": "#000000", "width": 3 },
+      "highlight": { "enabled": true, "color": "#FFD400", "opacity": 230 },
+      "glow": { "enabled": false, "color": "#F0883E", "radius": 12 }
+    },
+    {
+      "id": "s1",
+      "type": "sticker",
+      "emoji": "😀",
+      "x": 0.7,
+      "y": 0.6,
+      "w": 0.25,
+      "rotation": -10
+    }
+  ]
+}

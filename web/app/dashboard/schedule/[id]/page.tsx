@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui";
 import { docFromLegacy, type StoryDoc } from "@/lib/story-doc";
 import { type StyleConfig } from "@/lib/presets";
+import { type UserTag } from "@/lib/mentions";
 import { PostEditor } from "./post-editor";
 
 export default async function PostDetailPage({
@@ -17,7 +18,7 @@ export default async function PostDetailPage({
   const { data: post } = await supabase
     .from("posts")
     .select(
-      "id, scheduled_at, status, account_id, error, target, media:media_id(caption, style, doc, processed_url, original_url, original_path, aspect, feed_caption)",
+      "id, scheduled_at, status, account_id, error, target, media:media_id(caption, style, doc, processed_url, original_url, original_path, aspect, feed_caption, user_tags)",
     )
     .eq("id", id)
     .single();
@@ -38,6 +39,7 @@ export default async function PostDetailPage({
     original_path: string | null;
     aspect: string | null;
     feed_caption: string | null;
+    user_tags: UserTag[] | null;
   } | null;
 
   const initialDoc = media?.doc ?? docFromLegacy(media?.caption, media?.style);
@@ -63,6 +65,7 @@ export default async function PostDetailPage({
           has_original: !!media?.original_path,
           aspect: media?.aspect ?? null,
           feed_caption: media?.feed_caption ?? null,
+          user_tags: media?.user_tags ?? [],
         }}
         accounts={(accounts ?? []).map((a) => ({
           id: a.id,

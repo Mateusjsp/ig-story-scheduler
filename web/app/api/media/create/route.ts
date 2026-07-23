@@ -1,15 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { docCaption, TARGETS, type StoryDoc, type Target } from "@/lib/story-doc";
-
-// Texto concatenado dos elementos do doc (guardado em media.caption).
-function deriveCaption(docRaw: string): string | null {
-  try {
-    return docCaption(JSON.parse(docRaw) as StoryDoc) || null;
-  } catch {
-    return null;
-  }
-}
+import { validateUserTags, type UserTag } from "@/lib/mentions";
 
 // Trata a imagem (image-service /process -> URL pública) e cria media + post agendado.
 export async function POST(request: NextRequest) {
@@ -33,6 +25,8 @@ export async function POST(request: NextRequest) {
   const meta = TARGETS[target];
   // Legenda de texto real (só feed).
   const feedCaption = meta.isFeed ? (form.get("feed_caption") as string) || null : null;
+  // Marcações de pessoas (@) — JSON [{username,x,y}]. Vale pra feed e story.
+  const userTagsRaw = (form.get("user_tags") as string) || null;
   const scheduledAt = form.get("scheduled_at") as string | null;
   // "Postar agora": enfileira com scheduled_at = agora; o scheduler publica no
   // próximo ciclo (~1 min), reusando o mesmo caminho atômico do agendamento.
@@ -40,6 +34,45 @@ export async function POST(request: NextRequest) {
 
   if (!(file instanceof Blob) || !accountId) {
     return NextResponse.json({ error: "dados incompletos" }, { status: 400 });
+  }
+
+  // A conta precisa ser do próprio usuário (RLS já filtra ig_accounts por owner).
+  const { data: account } = await supabase
+    .from("ig_accounts")
+    .select("id")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!account) {
+    return NextResponse.json({ error: "conta não encontrada" }, { status: 404 });
+  }
+
+  // Parse único e ANTES do /process: doc/style malformado não pode subir imagem
+  // pro Storage e só então estourar (deixaria objetos órfãos + 500 genérico).
+  let parsedDoc: StoryDoc | null = null;
+  if (docRaw) {
+    try {
+      parsedDoc = JSON.parse(docRaw) as StoryDoc;
+    } catch {
+      return NextResponse.json({ error: "doc inválido (JSON malformado)" }, { status: 400 });
+    }
+  }
+  let parsedStyle: unknown = null;
+  if (style) {
+    try {
+      parsedStyle = JSON.parse(style);
+    } catch {
+      return NextResponse.json({ error: "style inválido (JSON malformado)" }, { status: 400 });
+    }
+  }
+  let userTags: UserTag[] = [];
+  if (userTagsRaw) {
+    try {
+      userTags = JSON.parse(userTagsRaw) as UserTag[];
+    } catch {
+      return NextResponse.json({ error: "marcações inválidas (JSON malformado)" }, { status: 400 });
+    }
+    const invalid = validateUserTags(userTags);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
   }
 
   let scheduledDate: Date;
@@ -106,10 +139,10 @@ export async function POST(request: NextRequest) {
       owner: user.id,
       account_id: accountId,
       // com doc, a legenda guardada é o texto concatenado dos elementos.
-      caption: docRaw ? deriveCaption(docRaw) : caption,
-      doc: docRaw ? JSON.parse(docRaw) : null,
+      caption: parsedDoc ? docCaption(parsedDoc) || null : caption,
+      doc: parsedDoc,
       // style guardado pra permitir editar depois (reprocessar). null = 'classic'.
-      style: style ? JSON.parse(style) : null,
+      style: parsedStyle,
       original_path: processed.original_path,
       original_url: processed.original_url,
       processed_path: processed.processed_path,
@@ -117,6 +150,7 @@ export async function POST(request: NextRequest) {
       width: processed.width,
       height: processed.height,
       feed_caption: feedCaption,
+      user_tags: userTags,
       aspect: meta.aspectLabel,
       status: "processed",
     })

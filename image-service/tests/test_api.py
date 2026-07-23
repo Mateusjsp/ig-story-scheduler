@@ -63,6 +63,36 @@ def test_preview_rejects_garbage():
     assert r.status_code == 400
 
 
+def test_process_rejects_unknown_target():
+    files = {"file": ("foto.png", _png_bytes(), "image/png")}
+    # 'feed' é o enum do banco, não um destino de render válido (feed_45/feed_11).
+    r = client.post(
+        "/process",
+        files=files,
+        data={"owner": "11111111-1111-1111-1111-111111111111", "target": "feed"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 400
+
+
+def test_process_rejects_non_uuid_owner():
+    files = {"file": ("foto.png", _png_bytes(), "image/png")}
+    r = client.post("/process", files=files, data={"owner": "nao-e-uuid"}, headers=HEADERS)
+    assert r.status_code == 400
+
+
+def test_reprocess_rejects_path_outside_owner():
+    r = client.post(
+        "/reprocess",
+        data={
+            "owner": "11111111-1111-1111-1111-111111111111",
+            "original_path": "22222222-2222-2222-2222-222222222222/original/x",
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 403
+
+
 def test_preview_requires_token():
     files = {"file": ("foto.png", _png_bytes(), "image/png")}
     r = client.post("/preview", files=files)  # sem header

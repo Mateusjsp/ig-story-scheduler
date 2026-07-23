@@ -35,9 +35,17 @@ FONT_CANDIDATES: dict[str, list[str]] = {
         "C:/Windows/Fonts/consolab.ttf",
         "/Library/Fonts/Menlo.ttc",
     ],
+    # Manuscrita/casual (personalidade estilo IG). Container: fonts-pacifico (apt).
+    # Fallbacks de dev: Segoe Script (Win) / Noteworthy (mac); se faltar, cai no
+    # load_default como as demais.
+    "script": [
+        "/usr/share/fonts/truetype/pacifico/Pacifico.ttf",
+        "C:/Windows/Fonts/segoesc.ttf",
+        "/System/Library/Fonts/Supplemental/Noteworthy.ttc",
+    ],
 }
 
-FontKey = Literal["sans-bold", "serif", "condensed", "mono"]
+FontKey = Literal["sans-bold", "serif", "condensed", "mono", "script"]
 Position = Literal["auto", "top", "center", "bottom"]
 
 
@@ -89,6 +97,30 @@ class Outline(BaseModel):
     _v = field_validator("color")(_valid_hex)
 
 
+class Highlight(BaseModel):
+    """Fundo colorido POR LINHA (marca-texto), justo ao texto — o visual 'assinatura'
+    do Instagram. Diferente do Scrim (uma caixa atrás do bloco inteiro): aqui cada
+    linha ganha sua própria pílula arredondada. Default desligado (retrocompat)."""
+
+    enabled: bool = False
+    color: str = "#FFFFFF"
+    opacity: int = Field(default=255, ge=0, le=255)
+
+    _v = field_validator("color")(_valid_hex)
+
+
+class Glow(BaseModel):
+    """Brilho/neon: halo colorido borrado sob o texto. `radius` é relativo ao tamanho
+    da fonte (blur = size * radius/100), então o efeito escala com a resolução —
+    preview (720px) e saída (1080px) batem. Default desligado (retrocompat)."""
+
+    enabled: bool = False
+    color: str = "#F0883E"
+    radius: int = Field(default=12, ge=0, le=40)
+
+    _v = field_validator("color")(_valid_hex)
+
+
 class StyleConfig(BaseModel):
     """Estilo completo do caption. Defaults = visual 'classic' histórico."""
 
@@ -105,7 +137,7 @@ class StyleConfig(BaseModel):
         return FONT_CANDIDATES[self.font]
 
     @classmethod
-    def parse(cls, raw: str | None) -> "StyleConfig":
+    def parse(cls, raw: str | None) -> StyleConfig:
         """De uma string JSON (ou None) pro modelo. None/vazio = classic."""
         if not raw or not raw.strip():
             return cls()

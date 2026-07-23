@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "elements": [
+    { "type": "text", "text": "oi" },
+    { "type": "sticker", "emoji": "😀" }
+  ]
+}

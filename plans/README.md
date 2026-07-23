@@ -24,20 +24,32 @@ atualize sua linha ao terminar.
 | 007 | Pipeline de CI (pytest + build/lint) | P2 | S | — | DONE |
 | 008 | Webhooks de menção/DM + app híbrido | — | L | App Review Meta | BLOCKED (externo) |
 | 009 | Publicar no feed (foto 4:5/1:1) | — | M | — | DONE (F0-F3 no working tree; falta migration 0009 + teste real) |
-| 010 | Validar dono do `account_id` (anti-IDOR) | P1 | S | — | TODO |
-| 011 | Token fora de logs e `posts.error` | P1 | S | — | TODO |
-| 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | TODO |
-| 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | TODO |
-| 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | TODO |
-| 015 | Refresh não demove conta em erro transitório | P2 | S | — | TODO |
-| 016 | Validar JSON do doc antes do /process | P2 | S | — | TODO |
-| 017 | Contrato TS↔Python do StoryDoc (fixtures) | P2 | M | — | TODO |
-| 018 | Defesa em profundidade image-service + SQL | P2 | M | — | TODO |
+| 010 | Validar dono do `account_id` (anti-IDOR) | P1 | S | — | DONE |
+| 011 | Token fora de logs e `posts.error` | P1 | S | — | DONE |
+| 012 | Allowlist do redirect `next` no auth callback | P1 | S | — | DONE |
+| 013 | Publish idempotente (anti-duplicação no IG) | P1 | M | — | DONE |
+| 014 | Corrida lote lento × requeue 10min | P2 | M | 013 | DONE |
+| 015 | Refresh não demove conta em erro transitório | P2 | S | — | DONE |
+| 016 | Validar JSON do doc antes do /process | P2 | S | — | DONE |
+| 017 | Contrato TS↔Python do StoryDoc (fixtures) | P2 | M | — | DONE |
+| 018 | Defesa em profundidade image-service + SQL | P2 | M | — | DONE |
 | 019 | Testes de caracterização das rotas web | P2 | L | melhor após 010/012/016/018 | TODO |
-| 020 | Lockfile Python (pip-tools) | P2 | S | — | TODO |
+| 020 | Lockfile Python (pip-tools) | P2 | S | — | DONE |
 | 021 | Decompor story-editor.tsx | P3 | L | 019 (e 017 ajuda) | TODO |
-| 022 | Baseline DX (ruff, typecheck, env.example, README) | P3 | S | — | TODO |
-| 023 | Perf do render (preview reduzido, emoji vendorizado) | P3 | M | — | TODO |
+| 022 | Baseline DX (ruff, typecheck, env.example, README) | P3 | S | — | DONE |
+| 023 | Perf do render (preview reduzido, emoji vendorizado) | P3 | M | — | BLOCKED (STOP do Step 1 — ver abaixo) |
+
+### 023 — bloqueio confirmado (2026-07-05)
+O Step 1 (render de `/preview` em escala reduzida) **bate na STOP condition do
+próprio plano**: `text_overlay.py` tem constantes absolutas em px que afetam
+layout/aparência, então preview reduzido divergiria do render publicado:
+- `MIN_FONT_SIZE = 28` (text_overlay.py:31) — clamp age diferente em 720 vs 1080px.
+- `stroke_w = style.outline.width` — contorno absoluto não escala.
+- `step = max(8, line_h // 3)` — placement do caminho legado.
+**Decisão pendente do mantenedor**: (a) tornar essas constantes relativas à
+largura antes de escalar o preview, ou (b) fazer só os Steps 2 (vendorizar emoji
+Noto — remove fetch de CDN no render) e 3 (timeout 10s→3s), que são independentes
+do problema de escala. Steps 2/3 seguem válidos e seguros.
 
 Status: TODO | IN PROGRESS | DONE | BLOCKED (motivo) | REJECTED (motivo)
 

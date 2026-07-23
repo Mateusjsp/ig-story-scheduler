@@ -1,3 +1,14 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Baseline: pega erro real (nomes indefinidos, imports não usados, modernização).
+# B/BLE (bugbear/blind-except) ficam de fora por ora — o código usa except amplo
+# intencional (re-raise como HTTPException, best-effort) e limpá-los é follow-up.
+select = ["E", "F", "W", "UP"]
+ignore = ["E501"]  # comprimento de linha é tarefa de formatter (ainda não há)

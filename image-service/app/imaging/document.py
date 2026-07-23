@@ -9,11 +9,11 @@ caminho legado (overlay_text com placement automático).
 """
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.imaging.style import FONT_CANDIDATES, FontKey, Outline, Scrim, _valid_hex
+from app.imaging.style import FONT_CANDIDATES, FontKey, Glow, Highlight, Outline, Scrim, _valid_hex
 
 Align = Literal["left", "center", "right"]
 
@@ -32,6 +32,8 @@ class TextElement(BaseModel):
     size_factor: float = Field(default=0.07, gt=0.0, le=0.3)
     scrim: Scrim = Field(default_factory=Scrim)
     outline: Outline = Field(default_factory=Outline)
+    highlight: Highlight = Field(default_factory=Highlight)
+    glow: Glow = Field(default_factory=Glow)
 
     _v = field_validator("color")(_valid_hex)
 
@@ -52,7 +54,7 @@ class StickerElement(BaseModel):
 # União simples (smart mode): payload de texto sem "type" cai em TextElement
 # (default "text"); com "type":"sticker" casa StickerElement. Evita exigir o
 # discriminador explícito e mantém compat com docs antigos.
-Element = Union[TextElement, StickerElement]
+Element = TextElement | StickerElement
 
 
 class Photo(BaseModel):
@@ -71,10 +73,12 @@ class Photo(BaseModel):
 class StoryDoc(BaseModel):
     version: int = 1
     photo: Photo = Field(default_factory=Photo)
-    elements: list[Element] = Field(default_factory=list)
+    # Cap defensivo: doc hostil com milhares de elementos = CPU + fetches seriais
+    # de emoji segurando o worker. 40 é folga ampla sobre o uso real do editor.
+    elements: list[Element] = Field(default_factory=list, max_length=40)
 
     @classmethod
-    def parse(cls, raw: str | None) -> "StoryDoc | None":
+    def parse(cls, raw: str | None) -> StoryDoc | None:
         """String JSON -> StoryDoc. None/vazio -> None (usa caminho legado)."""
         if not raw or not raw.strip():
             return None

@@ -30,6 +30,16 @@ def test_invalid_font_rejected():
         StyleConfig(font="comic")
 
 
+def test_script_font_accepted_and_mapped():
+    from app.imaging.style import FONT_CANDIDATES
+
+    s = StyleConfig(font="script")
+    assert s.font == "script"
+    # Container serve o Pacifico (fonts-pacifico via apt) como primeiro candidato.
+    assert "pacifico" in FONT_CANDIDATES["script"][0].lower()
+    assert s.font_candidates() == FONT_CANDIDATES["script"]
+
+
 def test_invalid_hex_rejected():
     with pytest.raises(Exception):
         StyleConfig(text_color="red")

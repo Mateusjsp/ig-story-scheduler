@@ -2,8 +2,12 @@
 // O editor produz este doc; o server re-renderiza autoritativo.
 
 import {
+  DEFAULT_GLOW,
+  DEFAULT_HIGHLIGHT,
   DEFAULT_STYLE,
   type FontKey,
+  type Glow,
+  type Highlight,
   type Outline,
   type Scrim,
 } from "@/lib/presets";
@@ -68,6 +72,8 @@ export interface TextElement {
   size_factor: number; // fração da largura
   scrim: Scrim;
   outline: Outline;
+  highlight: Highlight; // fundo por linha (marca-texto)
+  glow: Glow; // brilho/neon
 }
 
 export interface StickerElement {
@@ -121,6 +127,7 @@ export const FONT_CSS: Record<FontKey, string> = {
   serif: "story-serif",
   condensed: "story-condensed",
   mono: "story-mono",
+  script: "story-script",
 };
 
 let _seq = 0;
@@ -140,6 +147,8 @@ export function newTextElement(partial: Partial<TextElement> = {}): TextElement 
     size_factor: 0.07,
     scrim: { ...DEFAULT_STYLE.scrim },
     outline: { ...DEFAULT_STYLE.outline },
+    highlight: { ...DEFAULT_HIGHLIGHT },
+    glow: { ...DEFAULT_GLOW },
     ...partial,
   };
 }
@@ -153,7 +162,7 @@ export function newStickerElement(emoji: string, partial: Partial<StickerElement
     emoji,
     x: 0.5,
     y: 0.5,
-    w: 0.22,
+    w: 0.2, // igual ao default de desserialização do Python (document.py)
     rotation: 0,
     ...partial,
   };
@@ -189,6 +198,8 @@ export function docFromLegacy(
         size_factor: s.size_factor,
         scrim: { ...s.scrim },
         outline: { ...s.outline },
+        highlight: { ...DEFAULT_HIGHLIGHT },
+        glow: { ...DEFAULT_GLOW },
         y: 0.5,
       }),
     ],

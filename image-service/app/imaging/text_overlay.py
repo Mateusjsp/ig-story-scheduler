@@ -18,7 +18,7 @@ import logging
 import os
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.imaging.document import StickerElement, StoryDoc, TextElement
 from app.imaging.emoji import emoji_image
@@ -286,7 +286,12 @@ def _render_text_element(base: Image.Image, el: TextElement) -> None:
     stroke_w = el.outline.width if el.outline.enabled else 0
     stroke_rgb = hex_to_rgb(el.outline.color)
 
-    pad = int(size * 0.4)
+    # Glow: blur relativo ao tamanho da fonte (escala com a resolução). O `pad`
+    # ganha essa folga extra pra o halo não ser cortado na borda da layer.
+    glow = el.glow
+    glow_blur = int(size * glow.radius / 100) if glow.enabled else 0
+
+    pad = int(size * 0.4) + glow_blur
     lw = int(block_w + 2 * pad)
     lh = int(block_h + 2 * pad)
     layer = Image.new("RGBA", (lw, lh), (0, 0, 0, 0))
@@ -304,15 +309,47 @@ def _render_text_element(base: Image.Image, el: TextElement) -> None:
             [2, 2, lw - 2, lh - 2], radius=int(size * 0.35), fill=(*scrim_rgb, alpha)
         )
 
+    # Posição de cada linha (align L/C/R) + largura — reutilizada pelo halo, pela
+    # pílula do marca-texto e pelo texto nítido.
+    positions: list[tuple[str, float, int, float]] = []
     ty = pad
     for line in lines:
         tw = measure.textlength(line, font=font)
         if el.align == "left":
-            tx = pad
+            tx: float = pad
         elif el.align == "right":
             tx = pad + (block_w - tw)
         else:
             tx = pad + (block_w - tw) / 2.0
+        positions.append((line, tx, ty, tw))
+        ty += line_h + gap
+
+    # Glow/neon: texto na cor do brilho, borrado, compositado SOB o texto nítido.
+    if glow.enabled and glow_blur > 0:
+        glow_rgb = hex_to_rgb(glow.color)
+        halo = Image.new("RGBA", (lw, lh), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(halo)
+        for line, tx, ty, _tw in positions:
+            hd.text((tx, ty), line, font=font, fill=(*glow_rgb, 255))
+        halo = halo.filter(ImageFilter.GaussianBlur(glow_blur))
+        layer = Image.alpha_composite(layer, halo)
+        ld = ImageDraw.Draw(layer)
+
+    # Highlight (marca-texto): pílula colorida POR LINHA, justa ao texto. Cabe na
+    # folga do `pad` (hl_pad_x < pad).
+    hl = el.highlight
+    hl_rgb = hex_to_rgb(hl.color) if hl.enabled else (0, 0, 0)
+    hl_pad_x = int(size * 0.28)
+    hl_pad_y = int(line_h * 0.14)
+    hl_radius = int(line_h * 0.3)
+
+    for line, tx, ty, tw in positions:
+        if hl.enabled and line.strip():
+            ld.rounded_rectangle(
+                [tx - hl_pad_x, ty - hl_pad_y, tx + tw + hl_pad_x, ty + line_h + hl_pad_y],
+                radius=hl_radius,
+                fill=(*hl_rgb, hl.opacity),
+            )
         ld.text(
             (tx, ty),
             line,
@@ -321,7 +358,6 @@ def _render_text_element(base: Image.Image, el: TextElement) -> None:
             stroke_width=stroke_w,
             stroke_fill=(*stroke_rgb, 255),
         )
-        ty += line_h + gap
 
     # rotação: negativa pra bater com CSS (positivo = horário). expand mantém tudo.
     if el.rotation:

@@ -1,12 +1,39 @@
 """Testes do documento de camadas (StoryDoc) e render multi-elemento."""
+from pathlib import Path
+
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from PIL import Image
 
 import app.imaging.text_overlay as to
-from app.imaging.document import StickerElement, StoryDoc
+from app.imaging.document import StickerElement, StoryDoc, TextElement
 from app.imaging.emoji import codepoints
 from app.imaging.text_overlay import render_document
+
+FIXTURES = Path(__file__).parent.parent.parent / "shared" / "fixtures" / "story-docs"
+
+
+def test_fixtures_parse_and_defaults():
+    for f in sorted(FIXTURES.glob("*.json")):
+        doc = StoryDoc.model_validate_json(f.read_text(encoding="utf-8"))
+        assert doc.version == 1
+    minimal = StoryDoc.model_validate_json(
+        (FIXTURES / "minimal.json").read_text(encoding="utf-8")
+    )
+    text, sticker = minimal.elements
+    # Defaults de desserialização — devem bater com web/lib/story-doc.test.ts.
+    assert isinstance(text, TextElement)
+    assert (text.x, text.y, text.w, text.size_factor) == (0.5, 0.5, 0.8, 0.07)
+    assert isinstance(sticker, StickerElement)
+    assert sticker.w == 0.2
+    assert minimal.photo.scale == 1.0
+
+
+def test_doc_rejects_too_many_elements():
+    payload = {"version": 1, "elements": [{"type": "text", "text": "x"} for _ in range(41)]}
+    with pytest.raises(ValidationError):
+        StoryDoc.model_validate(payload)
 
 
 def _img() -> Image.Image:
@@ -107,6 +134,62 @@ def test_sticker_missing_is_skipped(monkeypatch):
     doc = StoryDoc.model_validate({"elements": [{"type": "sticker", "emoji": "x"}]})
     out = render_document(base, doc)
     assert np.array_equal(np.asarray(base), np.asarray(out))  # nada desenhado
+
+
+def test_highlight_parses_and_defaults_off():
+    # Retrocompat: doc sem `highlight` desabilita por padrão.
+    doc = StoryDoc.model_validate({"elements": [{"text": "x"}]})
+    assert doc.elements[0].highlight.enabled is False
+    # E aceita o campo quando presente.
+    doc2 = StoryDoc.model_validate(
+        {"elements": [{"text": "x", "highlight": {"enabled": True, "color": "#FFD400", "opacity": 230}}]}
+    )
+    assert doc2.elements[0].highlight.enabled is True
+    assert doc2.elements[0].highlight.color == "#FFD400"
+
+
+def test_highlight_changes_render():
+    base = _img()
+    plain = render_document(
+        base.copy(), StoryDoc.model_validate({"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1}]})
+    )
+    marked = render_document(
+        base.copy(),
+        StoryDoc.model_validate(
+            {"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1,
+                           "highlight": {"enabled": True, "color": "#FFD400", "opacity": 255}}]}
+        ),
+    )
+    # A pílula amarela por linha muda os pixels em relação ao texto sem fundo.
+    assert not np.array_equal(np.asarray(plain), np.asarray(marked))
+
+
+def test_glow_parses_and_defaults_off():
+    doc = StoryDoc.model_validate({"elements": [{"text": "x"}]})
+    assert doc.elements[0].glow.enabled is False
+    doc2 = StoryDoc.model_validate(
+        {"elements": [{"text": "x", "glow": {"enabled": True, "color": "#00FFAA", "radius": 20}}]}
+    )
+    assert doc2.elements[0].glow.enabled is True
+    assert doc2.elements[0].glow.radius == 20
+
+
+def test_glow_changes_render_and_spreads():
+    base = _img()
+    plain = render_document(
+        base.copy(), StoryDoc.model_validate({"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1}]})
+    )
+    neon = render_document(
+        base.copy(),
+        StoryDoc.model_validate(
+            {"elements": [{"text": "oi", "x": 0.5, "y": 0.5, "size_factor": 0.1,
+                           "glow": {"enabled": True, "color": "#00FFAA", "radius": 30}}]}
+        ),
+    )
+    # O halo borrado muda mais pixels (área maior) que o texto nítido sozinho.
+    changed_plain = (np.abs(np.asarray(base, int) - np.asarray(plain, int)).sum(axis=2) > 0).sum()
+    changed_neon = (np.abs(np.asarray(base, int) - np.asarray(neon, int)).sum(axis=2) > 0).sum()
+    assert changed_neon > changed_plain
 
 
 def test_two_elements_draw_in_different_places():

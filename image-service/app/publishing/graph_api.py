@@ -16,6 +16,7 @@ construtor (cada ig_account tem as suas), sem depender de um .env global.
 """
 from __future__ import annotations
 
+import json
 import time
 
 import requests
@@ -50,13 +51,18 @@ class GraphApiPublisher(Publisher):
         *,
         media_type: str = "IMAGE",
         caption: str | None = None,
+        user_tags: list[dict] | None = None,
     ) -> str:
-        container_id = self._create_container(media_url, media_type, caption)
+        container_id = self._create_container(media_url, media_type, caption, user_tags)
         self._wait_until_ready(container_id)
         return self._publish_container(container_id)
 
     def _create_container(
-        self, media_url: str, media_type: str = "IMAGE", caption: str | None = None
+        self,
+        media_url: str,
+        media_type: str = "IMAGE",
+        caption: str | None = None,
+        user_tags: list[dict] | None = None,
     ) -> str:
         data = {"image_url": media_url, "access_token": self.access_token}
         # A API assume IMAGE (feed) quando media_type é omitido; enviar "IMAGE"
@@ -66,6 +72,10 @@ class GraphApiPublisher(Publisher):
         # Legenda só faz sentido no feed; story ignora.
         if caption and media_type != "STORIES":
             data["caption"] = caption
+        # Marcações de pessoas (user_tags): suportado no feed (x/y obrigatórios) e no
+        # story (menção; x/y opcionais). A API espera JSON no corpo do form.
+        if user_tags:
+            data["user_tags"] = json.dumps(user_tags)
         resp = requests.post(
             f"{self._base}/{self.ig_user_id}/media",
             data=data,
@@ -79,7 +89,8 @@ class GraphApiPublisher(Publisher):
         for _ in range(POLL_MAX_TRIES):
             resp = requests.get(
                 url,
-                params={"fields": "status_code", "access_token": self.access_token},
+                params={"fields": "status_code"},
+                headers={"Authorization": f"Bearer {self.access_token}"},
                 timeout=TIMEOUT,
             )
             self._raise_for_meta_error(resp, "checar status do container")

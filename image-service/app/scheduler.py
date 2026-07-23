@@ -11,7 +11,9 @@ Supabase estiver configurado.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+import threading
+import time
+from datetime import datetime, timedelta, UTC
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -23,11 +25,54 @@ from app.settings import get_settings
 
 log = logging.getLogger("scheduler")
 MAX_ATTEMPTS = 3
-STUCK_MINUTES = 10  # post em "publishing" além disso = órfão, volta pra fila
+# post em "publishing" além disso = órfão, volta pra fila. Folga sobre o pior
+# caso de UM item (poll ~60s + timeouts + retries) — o heartbeat renova o
+# updated_at a cada item, então um lote longo não cruza o limiar.
+STUCK_MINUTES = 15
+
+# Serializa APScheduler × /run-due (pg_cron) dentro do processo: uma passada de
+# publish_due por vez, pra requeue_stuck não mexer no lote em andamento.
+_publish_lock = threading.Lock()
+
+
+class PublishedButNotRecorded(Exception):
+    """Publicou na Meta mas não gravou o ig_media_id (não reenfileirar!)."""
+
+    def __init__(self, ig_media_id: str):
+        self.ig_media_id = ig_media_id
+        super().__init__(f"publicado ({ig_media_id}) mas não gravado")
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+def _mark_published(sb, pid: str, ig_media_id: str) -> None:
+    """Grava o sucesso com retry curto — falha transitória do banco não pode
+    devolver pra fila um post JÁ publicado (isso duplicaria na Meta)."""
+    last: Exception | None = None
+    for _ in range(3):
+        try:
+            sb.table("posts").update(
+                {
+                    "status": "published",
+                    "ig_media_id": ig_media_id,
+                    "published_at": _now().isoformat(),
+                    "error": None,
+                }
+            ).eq("id", pid).execute()
+            return
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            time.sleep(2)
+    raise PublishedButNotRecorded(ig_media_id) from last
+
+
+def _safe_err(exc: Exception) -> str:
+    """Mensagem sem URL/token — exceções do requests embutem a URL chamada."""
+    if isinstance(exc, requests.RequestException):
+        return f"{type(exc).__name__} ao chamar a API da Meta"
+    return str(exc)
 
 
 def requeue_stuck() -> None:
@@ -46,22 +91,39 @@ def requeue_stuck() -> None:
 
 
 def publish_due() -> None:
-    requeue_stuck()
-    sb = get_supabase()
-    # Claim atômico (FOR UPDATE SKIP LOCKED): cada post é reivindicado por uma só
-    # instância, evitando publicação dupla com múltiplas réplicas. Ver migration
-    # 0003_claim_posts.sql. O claim já marca 'publishing' e incrementa attempts.
-    claimed = sb.rpc("claim_due_posts", {"lim": 20}).execute()
-    for post in claimed.data or []:
-        _publish_one(sb, post)
+    if not _publish_lock.acquire(blocking=False):
+        log.info("publish_due já em execução — pulando esta passada.")
+        return
+    try:
+        requeue_stuck()
+        sb = get_supabase()
+        # Claim atômico (FOR UPDATE SKIP LOCKED): cada post é reivindicado por uma só
+        # instância, evitando publicação dupla com múltiplas réplicas. Ver migration
+        # 0003_claim_posts.sql. O claim já marca 'publishing' e incrementa attempts.
+        claimed = sb.rpc("claim_due_posts", {"lim": 20}).execute()
+        for post in claimed.data or []:
+            _publish_one(sb, post)
+    finally:
+        _publish_lock.release()
 
 
 def _publish_one(sb, post: dict) -> None:
     pid = post["id"]
     try:
+        # Curto-circuito: se o post já tem ig_media_id, ele JÁ saiu na Meta
+        # (requeue de um post publicado). Só conserta o status, não republica.
+        fresh = (
+            sb.table("posts").select("ig_media_id").eq("id", pid).single().execute().data
+        )
+        if fresh and fresh.get("ig_media_id"):
+            sb.table("posts").update({"status": "published", "error": None}).eq(
+                "id", pid
+            ).execute()
+            log.info("post %s já publicado (%s) — corrigindo status", pid, fresh["ig_media_id"])
+            return
         media = (
             sb.table("media")
-            .select("processed_url, feed_caption")
+            .select("processed_url, feed_caption, user_tags")
             .eq("id", post["media_id"])
             .single()
             .execute()
@@ -84,30 +146,43 @@ def _publish_one(sb, post: dict) -> None:
             access_token=token,
             graph_host=account.get("graph_host") or "https://graph.instagram.com",
         )
+        # Heartbeat: renova updated_at antes de publicar, pra requeue_stuck não
+        # "resgatar" este post enquanto os anteriores do lote ainda publicam.
+        sb.table("posts").update({"updated_at": _now().isoformat()}).eq("id", pid).execute()
+        # Marcações de pessoas (@) — enviadas à Meta como user_tags. Vale pra feed
+        # e story; lista vazia/ausente = sem marcação.
+        user_tags = (media or {}).get("user_tags") or None
         # Destino define o container da Meta: feed = foto no perfil (com legenda de
         # texto real), story = tela cheia 24h. Default 'story' (posts antigos).
         if post.get("target") == "feed":
             ig_media_id = publisher.publish_feed(
-                image_url, caption=(media or {}).get("feed_caption")
+                image_url,
+                caption=(media or {}).get("feed_caption"),
+                user_tags=user_tags,
             )
         else:
-            ig_media_id = publisher.publish_story(image_url)
-        sb.table("posts").update(
-            {
-                "status": "published",
-                "ig_media_id": ig_media_id,
-                "published_at": _now().isoformat(),
-                "error": None,
-            }
-        ).eq("id", pid).execute()
+            ig_media_id = publisher.publish_story(image_url, user_tags=user_tags)
+        _mark_published(sb, pid, ig_media_id)
         log.info("post %s publicado (%s)", pid, ig_media_id)
+    except PublishedButNotRecorded as exc:
+        # Publicou de verdade mas não gravou. NUNCA reenfileirar (duplicaria).
+        try:
+            sb.table("posts").update(
+                {
+                    "status": "failed",
+                    "ig_media_id": exc.ig_media_id,
+                    "error": f"publicado na Meta ({exc.ig_media_id}) mas não gravado — verificar",
+                }
+            ).eq("id", pid).execute()
+        except Exception:  # noqa: BLE001
+            log.error("post %s publicado (%s) e sem gravar status", pid, exc.ig_media_id)
     except Exception as exc:  # noqa: BLE001
         attempts = post.get("attempts", 0)  # claim já incrementou
         status = "queued" if attempts < MAX_ATTEMPTS else "failed"
-        sb.table("posts").update({"status": status, "error": str(exc)}).eq(
+        sb.table("posts").update({"status": status, "error": _safe_err(exc)}).eq(
             "id", pid
         ).execute()
-        log.warning("post %s falhou (%s/%s): %s", pid, attempts, MAX_ATTEMPTS, exc)
+        log.warning("post %s falhou (%s/%s): %s", pid, attempts, MAX_ATTEMPTS, _safe_err(exc))
 
 
 def refresh_tokens() -> None:
@@ -127,7 +202,8 @@ def refresh_tokens() -> None:
             host = acc.get("graph_host") or s.graph_host
             resp = requests.get(
                 f"{host}/refresh_access_token",
-                params={"grant_type": "ig_refresh_token", "access_token": token},
+                params={"grant_type": "ig_refresh_token"},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=60,
             )
             resp.raise_for_status()
@@ -141,10 +217,21 @@ def refresh_tokens() -> None:
             ).eq("id", acc["id"]).execute()
             log.info("token da conta %s renovado", acc["id"])
         except Exception as exc:  # noqa: BLE001
-            sb.table("ig_accounts").update({"status": "token_expired"}).eq(
-                "id", acc["id"]
-            ).execute()
-            log.warning("refresh da conta %s falhou: %s", acc["id"], exc)
+            resp_status = getattr(getattr(exc, "response", None), "status_code", None)
+            if resp_status is not None and 400 <= resp_status < 500:
+                # A Meta rejeitou o token: expirado/revogado de verdade.
+                sb.table("ig_accounts").update({"status": "token_expired"}).eq(
+                    "id", acc["id"]
+                ).execute()
+                log.warning(
+                    "refresh da conta %s: token rejeitado (HTTP %s)", acc["id"], resp_status
+                )
+            else:
+                # Transitório (rede/5xx/parse/decrypt): mantém active; tenta no
+                # próximo ciclo (12h) — há dias de folga antes do token expirar.
+                log.warning(
+                    "refresh da conta %s falhou (transitório): %s", acc["id"], _safe_err(exc)
+                )
 
 
 def start_scheduler() -> BackgroundScheduler | None:

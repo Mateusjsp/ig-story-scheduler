@@ -48,11 +48,15 @@ de imagem já testado (blur fill + placement por busyness + desvio de rosto).
 ```bash
 cd image-service
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.lock   # versões pinadas (build reproduzível)
 cp .env.example .env            # preencha SUPABASE_*, INSTAGRAM_*, TOKEN_ENC_KEY
 uvicorn app.main:app --reload   # http://localhost:8000
 pytest                          # testes do core de imagem + API
 ```
+
+> **Atualizar deps**: edite `requirements.txt` (limites `>=`) e regenere o lock:
+> `pip-compile requirements.txt -o requirements.lock --strip-extras` (precisa de
+> `pip install pip-tools`). O `requirements.lock` é o que CI/Docker instalam.
 
 ### 3. web (local)
 ```bash
@@ -85,11 +89,14 @@ npm run dev                        # http://localhost:3000
   scheduler sobe junto (publica/renova sozinho).
 
 ## Verificação ponta a ponta
-1. `pytest` no image-service (core + API verdes).
+1. `pytest` no image-service (core + API verdes) e `npm test` no web.
 2. Login no painel → conectar conta (OAuth) → `ig_accounts` populado.
-3. Estúdio: upload + legenda → **Preview** mostra o Story tratado.
-4. Agendar pra +2 min → o scheduler publica → `posts.status=published`, Story no ar.
-5. Multi-tenant: 2º usuário não vê dados do 1º (RLS).
+3. Estúdio: upload + **editor de camadas** (texto/emoji, crop/zoom da foto) →
+   escolher destino **Story (9:16)** ou **Feed (4:5 / 1:1, com legenda de texto)**
+   → **Ver render real** mostra o resultado tratado pelo server.
+4. Agendar pra +2 min → o scheduler publica → `posts.status=published` no ar.
+5. Na **Agenda**: editar um post (reprocessa via `/reprocess`) ou cancelar.
+6. Multi-tenant: 2º usuário não vê dados do 1º (RLS).
 
 ## Stack
 Next.js 16 · React 19 · Tailwind v4 · Supabase (Postgres/Auth/Storage) ·
