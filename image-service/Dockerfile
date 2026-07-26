@@ -1,4 +1,8 @@
-FROM python:3.12-slim
+# Pin em bookworm (Debian 12): a tag móvel python:3.12-slim avançou pra trixie
+# (13), onde a transição time_t renomeou libglib2.0-0 -> libglib2.0-0t64,
+# quebrando o apt-get abaixo (exit 100). bookworm mantém os nomes antigos e é o
+# ambiente que já funcionava. Sem pin, o build volta a quebrar sozinho.
+FROM python:3.12-slim-bookworm
 
 # libglib2.0-0: exigido pelo opencv-python-headless em runtime.
 # fonts-dejavu (full): fornece as variantes usadas pelos presets — Sans-Bold,

@@ -30,6 +30,44 @@ export function newUserTag(rawUsername: string, x = 0.5, y = 0.5): UserTag | nul
   return { username, x: clamp01(x), y: clamp01(y) };
 }
 
+/** Ranqueia usernames do histórico de marcações (várias mídias) pra alimentar o
+ *  autocomplete. Ordena por frequência (quem foi marcado mais aparece primeiro)
+ *  e, no empate, alfabético. Ignora inválidos e deduplica. */
+export function rankUsernames(rows: Array<UserTag[] | null | undefined>): string[] {
+  const freq = new Map<string, number>();
+  for (const tags of rows) {
+    if (!Array.isArray(tags)) continue;
+    for (const t of tags) {
+      const u = sanitizeUsername(t?.username ?? "");
+      if (!USERNAME_RE.test(u)) continue;
+      freq.set(u, (freq.get(u) ?? 0) + 1);
+    }
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([u]) => u);
+}
+
+/** Filtra sugestões pra um rascunho de digitação (prefixo/substring), tirando quem
+ *  já está marcado. Case/@-insensitive via sanitizeUsername. */
+export function filterSuggestions(
+  suggestions: string[],
+  draft: string,
+  already: string[],
+  limit = 6,
+): string[] {
+  const q = sanitizeUsername(draft);
+  const taken = new Set(already);
+  const out: string[] = [];
+  for (const u of suggestions) {
+    if (taken.has(u)) continue;
+    if (q && !u.includes(q)) continue;
+    out.push(u);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /** Validação leve (a Meta valida de verdade). Retorna erro legível ou null. */
 export function validateUserTags(tags: UserTag[]): string | null {
   if (!Array.isArray(tags)) return "Marcações inválidas";

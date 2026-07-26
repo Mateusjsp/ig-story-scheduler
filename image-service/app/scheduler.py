@@ -141,10 +141,14 @@ def _publish_one(sb, post: dict) -> None:
         if not image_url:
             raise RuntimeError("media sem processed_url (rode o /process antes).")
         token = decrypt_token(account["access_token_enc"])
+        s = get_settings()
         publisher = GraphApiPublisher(
             ig_user_id=account["ig_user_id"],
             access_token=token,
-            graph_host=account.get("graph_host") or "https://graph.instagram.com",
+            graph_host=account.get("graph_host") or s.graph_host,
+            # Sem isto o publisher caía no default e a versão do ambiente era
+            # ignorada — mantinha v21.0 e a menção em story não saía.
+            graph_version=s.graph_version,
         )
         # Heartbeat: renova updated_at antes de publicar, pra requeue_stuck não
         # "resgatar" este post enquanto os anteriores do lote ainda publicam.

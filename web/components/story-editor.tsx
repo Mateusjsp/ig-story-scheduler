@@ -14,7 +14,7 @@ import {
   type TextElement,
 } from "@/lib/story-doc";
 import { FONT_LABELS, type FontKey } from "@/lib/presets";
-import { MAX_USER_TAGS, newUserTag, type UserTag } from "@/lib/mentions";
+import { MAX_USER_TAGS, newUserTag, filterSuggestions, type UserTag } from "@/lib/mentions";
 import { EmojiPicker } from "@/components/emoji-picker";
 
 // Editor de Story em camadas: fundo (blur-fill aproximado por CSS) + textos e
@@ -56,6 +56,7 @@ export function StoryEditor({
   aspectH = 16,
   mentions = [],
   onMentionsChange,
+  mentionSuggestions = [],
 }: {
   doc: StoryDoc;
   onChange: (d: StoryDoc) => void;
@@ -69,6 +70,8 @@ export function StoryEditor({
   // onMentionsChange é passado, o editor mostra os pins arrastáveis + botão "@ Marcar".
   mentions?: UserTag[];
   onMentionsChange?: (m: UserTag[]) => void;
+  // Histórico de @ já marcados (ranqueado) pra alimentar o autocomplete estilo IG.
+  mentionSuggestions?: string[];
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -76,6 +79,7 @@ export function StoryEditor({
   const [editingId, setEditingId] = useState<string | null>(null); // texto em edição inline
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState<string | null>(null); // null = fechado; string = input aberto
+  const [tagHi, setTagHi] = useState(0); // índice destacado no dropdown de sugestões
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
 
@@ -180,10 +184,18 @@ export function StoryEditor({
   }
 
   // ── marcações de pessoas (@) ──
-  function commitTag() {
-    const draft = tagDraft ?? "";
+  // Sugestões do histórico que casam com o rascunho, tirando quem já foi marcado.
+  const tagOptions =
+    tagDraft === null
+      ? []
+      : filterSuggestions(mentionSuggestions, tagDraft, mentions.map((m) => m.username));
+
+  // Fecha o input. Se `raw` vier (Enter/clique numa sugestão), tenta marcar.
+  function commitTag(raw?: string) {
+    const draft = (raw ?? tagDraft ?? "").trim();
     setTagDraft(null);
-    if (!onMentionsChange || !draft.trim()) return;
+    setTagHi(0);
+    if (!onMentionsChange || !draft) return;
     if (mentions.length >= MAX_USER_TAGS) return;
     const t = newUserTag(draft, 0.5, 0.5);
     if (!t || mentions.some((m) => m.username === t.username)) return; // inválido ou repetido
@@ -536,23 +548,83 @@ export function StoryEditor({
                 @ Marcar
               </button>
             ) : (
-              <input
-                autoFocus
-                value={tagDraft}
-                onChange={(e) => setTagDraft(e.target.value)}
-                onBlur={commitTag}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commitTag();
-                  } else if (e.key === "Escape") {
-                    setTagDraft(null);
+              <div className="relative">
+                <input
+                  autoFocus
+                  value={tagDraft}
+                  onChange={(e) => {
+                    setTagDraft(e.target.value);
+                    setTagHi(0);
+                  }}
+                  onBlur={() => commitTag()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      // sugestão destacada tem precedência sobre o texto cru.
+                      commitTag(tagOptions[tagHi] ?? tagDraft ?? "");
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setTagDraft(null);
+                      setTagHi(0);
+                    } else if (e.key === "ArrowDown" && tagOptions.length) {
+                      e.preventDefault();
+                      setTagHi((i) => (i + 1) % tagOptions.length);
+                    } else if (e.key === "ArrowUp" && tagOptions.length) {
+                      e.preventDefault();
+                      setTagHi((i) => (i - 1 + tagOptions.length) % tagOptions.length);
+                    }
+                  }}
+                  placeholder="@usuário"
+                  aria-label="Usuário pra marcar"
+                  role="combobox"
+                  aria-expanded={tagOptions.length > 0}
+                  aria-controls="mention-listbox"
+                  aria-activedescendant={
+                    tagOptions.length ? `mention-opt-${tagHi}` : undefined
                   }
-                }}
-                placeholder="@usuário"
-                aria-label="Usuário pra marcar"
-                className="w-32 rounded-full border border-amber bg-surface/60 px-3 py-1.5 text-xs text-text focus:outline-none"
-              />
+                  aria-autocomplete="list"
+                  className="w-36 rounded-full border border-amber bg-surface/60 px-3 py-1.5 text-xs text-text focus:outline-none"
+                />
+                {/* popover: sugestões do histórico (se houver) + aviso fixo. Sempre
+                    aberto enquanto o campo @ está ativo, pra o aviso ser visto. */}
+                <div className="absolute left-0 top-9 z-30 w-52 overflow-hidden rounded-xl border border-border bg-bg-raised shadow-lg">
+                  {tagOptions.length > 0 && (
+                    <ul id="mention-listbox" role="listbox" className="py-1">
+                      {tagOptions.map((u, i) => (
+                        <li key={u} id={`mention-opt-${i}`} role="option" aria-selected={i === tagHi}>
+                          <button
+                            type="button"
+                            // onMouseDown (não onClick): dispara antes do onBlur do input,
+                            // senão o blur fecharia o dropdown e mataria o clique.
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              commitTag(u);
+                            }}
+                            onMouseEnter={() => setTagHi(i)}
+                            className={`block w-full px-3 py-1.5 text-left text-xs ${
+                              i === tagHi ? "bg-amber/15 text-amber" : "text-text-dim"
+                            }`}
+                          >
+                            @{u}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {/* Aviso: a Meta só marca contas públicas; privada/inexistente é
+                      descartada em silêncio na publicação (sem erro no post). */}
+                  <p
+                    // preventDefault: clicar no aviso não deve tirar foco (blur) do input.
+                    onMouseDown={(e) => e.preventDefault()}
+                    className={`px-3 py-2 text-[0.65rem] leading-snug text-text-faint ${
+                      tagOptions.length > 0 ? "border-t border-border" : ""
+                    }`}
+                  >
+                    Só <span className="text-amber">contas públicas</span> são marcadas.
+                    Privada ou @ errada é ignorada no post, sem aviso.
+                  </p>
+                </div>
+              </div>
             ))}
           {selected && (
             <>

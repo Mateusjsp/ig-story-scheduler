@@ -34,7 +34,9 @@ class GraphApiPublisher(Publisher):
         ig_user_id: str,
         access_token: str,
         graph_host: str = "https://graph.instagram.com",
-        graph_version: str = "v21.0",
+        # v23.0+: story user_tags (menção) só funciona da versão de jul/2025 em
+        # diante; v21.0 ignora o campo silenciosamente. Ver settings.graph_version.
+        graph_version: str = "v23.0",
     ):
         self.ig_user_id = ig_user_id
         self.access_token = access_token

@@ -9,7 +9,13 @@ import { type UserTag } from "@/lib/mentions";
 
 type Account = { id: string; label: string };
 
-export function Uploader({ accounts }: { accounts: Account[] }) {
+export function Uploader({
+  accounts,
+  mentionSuggestions = [],
+}: {
+  accounts: Account[];
+  mentionSuggestions?: string[];
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
@@ -157,6 +163,7 @@ export function Uploader({ accounts }: { accounts: Account[] }) {
         aspectH={meta.h}
         mentions={mentions}
         onMentionsChange={setMentions}
+        mentionSuggestions={mentionSuggestions}
         footer={
           <>
             <div className="space-y-2">

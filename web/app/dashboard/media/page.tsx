@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { fetchMentionSuggestions } from "@/lib/mentions-server";
 import { PageHeader } from "@/components/ui";
 import { Uploader } from "./uploader";
 
@@ -10,6 +11,7 @@ export default async function MediaPage() {
     .select("id, username, ig_user_id")
     .eq("status", "active")
     .order("created_at", { ascending: false });
+  const mentionSuggestions = await fetchMentionSuggestions();
 
   return (
     <>
@@ -26,6 +28,7 @@ export default async function MediaPage() {
             id: a.id,
             label: a.username ? `@${a.username}` : a.ig_user_id,
           }))}
+          mentionSuggestions={mentionSuggestions}
         />
       ) : (
         <p className="text-sm text-text-dim">
