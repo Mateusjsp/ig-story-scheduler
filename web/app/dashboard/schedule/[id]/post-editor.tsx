@@ -29,7 +29,15 @@ function toLocalInput(iso: string): string {
   return local.toISOString().slice(0, 16);
 }
 
-export function PostEditor({ post, accounts }: { post: Post; accounts: Account[] }) {
+export function PostEditor({
+  post,
+  accounts,
+  mentionSuggestions = [],
+}: {
+  post: Post;
+  accounts: Account[];
+  mentionSuggestions?: string[];
+}) {
   const router = useRouter();
   const [doc, setDoc] = useState<StoryDoc>(post.doc);
   const [when, setWhen] = useState(toLocalInput(post.scheduled_at));
@@ -125,6 +133,7 @@ export function PostEditor({ post, accounts }: { post: Post; accounts: Account[]
         aspectH={meta.h}
         mentions={mentions}
         onMentionsChange={setMentions}
+        mentionSuggestions={mentionSuggestions}
         footer={
           <>
             {meta.isFeed && (

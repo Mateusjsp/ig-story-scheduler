@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { fetchMentionSuggestions } from "@/lib/mentions-server";
 import { PageHeader } from "@/components/ui";
 import { docFromLegacy, type StoryDoc } from "@/lib/story-doc";
 import { type StyleConfig } from "@/lib/presets";
@@ -29,6 +30,7 @@ export default async function PostDetailPage({
     .select("id, username, ig_user_id")
     .eq("status", "active")
     .order("created_at", { ascending: false });
+  const mentionSuggestions = await fetchMentionSuggestions();
 
   const media = (Array.isArray(post.media) ? post.media[0] : post.media) as {
     caption: string | null;
@@ -71,6 +73,7 @@ export default async function PostDetailPage({
           id: a.id,
           label: a.username ? `@${a.username}` : a.ig_user_id,
         }))}
+        mentionSuggestions={mentionSuggestions}
       />
     </>
   );
