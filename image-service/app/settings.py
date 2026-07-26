@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     instagram_app_id: str | None = None
     instagram_app_secret: str | None = None
     graph_host: str = "https://graph.instagram.com"
-    graph_version: str = "v21.0"
+    # v23.0: menção (user_tags) em story só é honrada a partir da versão vigente
+    # quando a Meta lançou o recurso (jul/2025). v21.0 (out/2024) ignora o campo
+    # em silêncio — publica sem marcar e sem erro.
+    graph_version: str = "v23.0"
 
     # Cifragem dos tokens guardados (Fase C+)
     token_enc_key: str | None = None
