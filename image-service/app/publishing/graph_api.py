@@ -34,9 +34,10 @@ class GraphApiPublisher(Publisher):
         ig_user_id: str,
         access_token: str,
         graph_host: str = "https://graph.instagram.com",
-        # v23.0+: story user_tags (menção) só funciona da versão de jul/2025 em
-        # diante; v21.0 ignora o campo silenciosamente. Ver settings.graph_version.
-        graph_version: str = "v23.0",
+        # v21.0: versão que o Instagram Login (graph.instagram.com) aceita neste
+        # fluxo. v23.0 retornou "Invalid user id" (code 110) na criação do
+        # container — não usar sem migrar pra Facebook Login.
+        graph_version: str = "v21.0",
     ):
         self.ig_user_id = ig_user_id
         self.access_token = access_token
