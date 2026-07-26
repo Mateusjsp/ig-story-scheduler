@@ -35,7 +35,7 @@ FONT_CANDIDATES: dict[str, list[str]] = {
         "C:/Windows/Fonts/consolab.ttf",
         "/Library/Fonts/Menlo.ttc",
     ],
-    # Manuscrita/casual (personalidade estilo IG). Container: fonts-pacifico (apt).
+    # Manuscrita/casual (personalidade estilo IG). Container: Pacifico vendorado
     # Fallbacks de dev: Segoe Script (Win) / Noteworthy (mac); se faltar, cai no
     # load_default como as demais.
     "script": [
