@@ -141,14 +141,14 @@ def _publish_one(sb, post: dict) -> None:
         if not image_url:
             raise RuntimeError("media sem processed_url (rode o /process antes).")
         token = decrypt_token(account["access_token_enc"])
-        s = get_settings()
+        # graph_version fica no default do publisher (v21.0). Tentar v23.0 aqui
+        # quebrou a publicação com "Invalid user id" (code 110) — o Instagram
+        # Login (graph.instagram.com) não aceita a versão nova nesse caminho, e a
+        # menção via API não é suportada nesse login (precisaria Facebook Login).
         publisher = GraphApiPublisher(
             ig_user_id=account["ig_user_id"],
             access_token=token,
-            graph_host=account.get("graph_host") or s.graph_host,
-            # Sem isto o publisher caía no default e a versão do ambiente era
-            # ignorada — mantinha v21.0 e a menção em story não saía.
-            graph_version=s.graph_version,
+            graph_host=account.get("graph_host") or "https://graph.instagram.com",
         )
         # Heartbeat: renova updated_at antes de publicar, pra requeue_stuck não
         # "resgatar" este post enquanto os anteriores do lote ainda publicam.
