@@ -9,11 +9,15 @@ FROM python:3.12-slim-bookworm
 # Serif-Bold, SansCondensed-Bold e SansMono-Bold. Sem fonte, o overlay cai no
 # ImageFont.load_default() (bitmap ~11px) e o caption fica invisível no Story de
 # 1080px. A imagem slim não traz nenhuma fonte.
-# fonts-pacifico (OFL): fonte "script"/manuscrita com personalidade (estilo IG),
-# em /usr/share/fonts/truetype/pacifico/Pacifico.ttf. Pacote apt = sem binário no repo.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libglib2.0-0 fonts-dejavu fonts-pacifico \
+    && apt-get install -y --no-install-recommends libglib2.0-0 fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
+
+# Pacifico (OFL): fonte "script"/manuscrita (estilo IG). Vendorada no repo em vez
+# de apt — o pacote fonts-pacifico não existe no bookworm (só na trixie), e a
+# trixie quebra o libglib2.0-0. Vendorar evita depender de apt/rede no build.
+# style.py resolve exatamente este caminho.
+COPY assets/fonts/Pacifico.ttf /usr/share/fonts/truetype/pacifico/Pacifico.ttf
 
 WORKDIR /srv
 
